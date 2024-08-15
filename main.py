@@ -27,19 +27,21 @@ class GridEnv(gym.Env):
 
 # Define a simple MLP for Actor and Critic
 class MLP(nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_sizes):
+    def __init__(self, input_dim, hidden_dim, output_dim):
         super(MLP, self).__init__()
-        layers = []
-        in_dim = input_dim
-        for size in hidden_sizes:
-            layers.append(nn.Linear(in_dim, size))
-            layers.append(nn.ReLU())
-            in_dim = size
-        layers.append(nn.Linear(in_dim, output_dim))
-        self.model = nn.Sequential(*layers)
+        self.model = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),  # input_dim and hidden_dim should be integers
+            nn.ReLU(),
+            nn.Linear(hidden_dim, output_dim)  # hidden_dim and output_dim should be integers
+        )
 
     def forward(self, x):
         return self.model(x)
+
+state_dim = 4  # Example state dimension
+hidden_dim = 64  # Example hidden dimension
+output_dim = 2  # Example output dimension
+mlp = MLP(state_dim, hidden_dim, output_dim)
 
 
 # Define Actor and Critic networks
@@ -72,15 +74,54 @@ class AttentionCritic(nn.Module):
             [nn.Linear(state_dim + action_dim, state_dim + action_dim) for _ in range(num_heads)])
 
     def forward(self, states, actions):
-        # Compute attention scores
+        # Convert lists to tensors
+        states = torch.stack([torch.tensor(state, dtype=torch.float32) for state in states])
+        actions = torch.stack([torch.tensor(action, dtype=torch.float32) for action in actions])
+
+        # Ensure tensors have correct dimensions
+        if states.dim() == 1:
+            states = states.unsqueeze(0)
+        if actions.dim() == 1:
+            actions = actions.unsqueeze(0)
+
+        print("States shape:", states.shape)
+        print("Actions shape:", actions.shape)
+
         attention_outputs = []
         for i in range(self.num_agents):
-            other_agents = [states[j] for j in range(self.num_agents) if j != i]
-            for head in self.attention_heads:
-                attention_output = head(torch.cat(other_agents, dim=0))
-                attention_outputs.append(attention_output)
+            other_agents_states = [states[j].unsqueeze(0) for j in range(self.num_agents) if j != i]
+            other_agents_actions = [actions[j].unsqueeze(0) for j in range(self.num_agents) if j != i]
+
+            if other_agents_states and other_agents_actions:
+                other_agents_states = torch.cat(other_agents_states, dim=0)
+                other_agents_actions = torch.cat(other_agents_actions, dim=0)
+
+                print("Other agents states shape:", other_agents_states.shape)
+                print("Other agents actions shape:", other_agents_actions.shape)
+
+                # Ensure actions tensor has the same number of dimensions
+                if other_agents_actions.dim() == 3:
+                    other_agents_actions = torch.squeeze(other_agents_actions, dim=1)  # Remove the extra dimension
+
+                print("Other agents actions reshaped shape:", other_agents_actions.shape)
+
+                # Concatenate states and actions along the feature dimension
+                other_agents = torch.cat([other_agents_states, other_agents_actions], dim=-1)
+                print("Other agents concatenated shape:", other_agents.shape)
+
+                other_agents_tensor = other_agents.unsqueeze(0)
+
+                for head in self.attention_heads:
+                    attention_output = head(other_agents_tensor)
+                    attention_outputs.append(attention_output)
+
             q_value = self.critics[i](states[i], actions[i])
-            return q_value, attention_outputs
+        return q_value, attention_outputs
+
+
+
+
+
 
 
 # Define MAAC Algorithm
@@ -118,13 +159,26 @@ def train_maac(env, num_agents, num_episodes, hidden_sizes, num_heads, lr):
         done = False
 
         while not done:
-            actions = [agent_maac.actors[i](torch.tensor(state, dtype=torch.float32).unsqueeze(0)).detach().numpy() for
-                       i, state in enumerate(states)]
+            state_tensors = [torch.tensor(state, dtype=torch.float32).unsqueeze(0) for state in states]
+            actions = [agent_maac.actors[i](state_tensors[i]).detach().numpy().flatten() for i in range(num_agents)]
+
+            print("Actions:", actions)
+
             next_states, rewards, done, _ = env.step(actions)
-            agent_maac.update(states, actions, rewards, next_states, done)
+            rewards = torch.tensor(rewards, dtype=torch.float32)
+            next_states_tensors = [torch.tensor(state, dtype=torch.float32) for state in next_states]
+
+            print("Next states tensors shape:", [tensor.shape for tensor in next_states_tensors])
+
+            agent_maac.update(states, actions, rewards, next_states_tensors, done)
             states = next_states
 
         print(f"Episode {episode + 1}/{num_episodes} completed")
+
+
+
+
+
 
 
 # Create environment instance
