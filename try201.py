@@ -3,12 +3,12 @@ import random
 from grid_env import GridEnv
 
 # Q-learning parameters
-alpha = 0.01  # Learning rate
+alpha = .5  # Learning rate
 gamma = 0.9  # Discount factor
 epsilon_start = 1.0  # Initial exploration rate
 epsilon_min = 0.01  # Minimum exploration rate
 epsilon_decay = 0.99  # Decay rate for epsilon
-num_episodes = 5000  # Number of episodes
+num_episodes = 1200  # Number of episodes
 
 
 # Define state-action space
@@ -39,7 +39,7 @@ def q_learning(env, num_episodes):
         done = False
         total_rewards = np.zeros(env.num_agents)
         alpha = 0.05 / (1 + episode * 0.005)
-        epsilon = max(1 - episode / 4500, 0.01)
+        epsilon = max(1 - episode / 1000, 0.01)
 
         while not done:
             actions = []

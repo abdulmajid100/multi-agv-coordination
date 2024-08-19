@@ -48,7 +48,7 @@ class GridEnv:
                     rewards[i] -= 10  # Penalty for hitting an obstacle
                     next_agent = agent  # Stay in the same place
                 elif self._is_goal(next_agent, i):
-                    rewards[i] += 1000000  # Reward for reaching the goal
+                    rewards[i] += 10000000  # Reward for reaching the goal
                     self.done[i] = True  # Mark as done
                 rewards[i] += distance_reward
                 self.next_agents[i] = next_agent
