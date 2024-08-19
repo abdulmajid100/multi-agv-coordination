@@ -8,7 +8,7 @@ gamma = 0.9  # Discount factor
 epsilon_start = 1.0  # Initial exploration rate
 epsilon_min = 0.01  # Minimum exploration rate
 epsilon_decay = 0.99  # Decay rate for epsilon
-num_episodes = 1200  # Number of episodes
+num_episodes = 5000  # Number of episodes
 
 
 # Define state-action space
@@ -39,7 +39,7 @@ def q_learning(env, num_episodes):
         done = False
         total_rewards = np.zeros(env.num_agents)
         alpha = 0.05 / (1 + episode * 0.005)
-        epsilon = max(1 - episode / 1000, 0.01)
+        epsilon = max(1 - episode / 4500, 0.01)
 
         while not done:
             actions = []
@@ -78,7 +78,7 @@ def q_learning(env, num_episodes):
 def main():
     grid_size = (5, 5)
     num_agents = 3
-    obstacles = [(0, 0), (0, 1), (0, 2), (0, 3), (1, 0), (1, 1), (1, 2), (1, 3), (2, 0), (3, 0), (3, 1),
+    obstacles = [(0, 0), (0, 1), (0, 2), (0, 3), (1, 0), (1, 1), (1, 2), (1, 3), (2, 0), (2, 1), (3, 0), (3, 1),
                  (3, 2), (3, 3), (4, 0), (4, 1), (4, 2), (4, 3)]
     goals = [(4, 4), (0, 4), (2, 4)]
     initial_positions = [(0, 4), (4, 4), (2, 2)]
