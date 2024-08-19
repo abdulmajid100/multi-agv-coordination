@@ -41,23 +41,23 @@ class GridEnv:
         for i, (agent, action) in enumerate(zip(self.agents, actions)):
             if not self.done[i]:
                 next_agent = self._apply_action(agent, action)
-                """current_distance = self._distance(agent, self.goals[i])
+                current_distance = self._distance(agent, self.goals[i])
                 new_distance = self._distance(next_agent, self.goals[i])
-                distance_reward = (current_distance - new_distance) * 10  # Positive reward for getting closer"""
+                distance_reward = (current_distance - new_distance) * 1  # Positive reward for getting closer
                 if self._is_collision(next_agent) or any(np.array_equal(next_agent, other_agent) for j, other_agent in enumerate(self.next_agents) if j != i):
-                    rewards[i] -= 200  # Penalty for hitting an obstacle
+                    rewards[i] -= 10  # Penalty for hitting an obstacle
                     next_agent = agent  # Stay in the same place
                 elif self._is_goal(next_agent, i):
-                    rewards[i] += 200  # Reward for reaching the goal
+                    rewards[i] += 1000000  # Reward for reaching the goal
                     self.done[i] = True  # Mark as done
-                #rewards[i] += distance_reward
+                rewards[i] += distance_reward
                 self.next_agents[i] = next_agent
             else:
                 self.next_agents[i] = agent
         self.agents = self.next_agents.copy()
         self.steps += 1
         done = all(self.done) or self.steps >= 200  # Terminate after 100 steps or all agents done
-        return np.array(self.agents), rewards, done, {}
+        return np.array(self.agents), rewards, done, {'steps': self.steps}
 
     def _distance(self, pos1, pos2):
         """Calculate Manhattan distance between two positions."""
@@ -115,7 +115,9 @@ class GridEnv:
             ax.add_patch(rect)
 
         # Initialize agents
-        agents_patches = [patches.Circle((pos[0], pos[1]), 0.3, color='blue') for pos in self.agents]
+        agent_colors = ['blue', 'brown', 'black', 'purple', 'orange']
+        agents_patches = [patches.Circle((pos[0], pos[1]), 0.3, color=agent_colors[i % len(agent_colors)])
+                          for i, pos in enumerate(self.agents)]
         for patch in agents_patches:
             ax.add_patch(patch)
 
