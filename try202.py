@@ -7,9 +7,9 @@ alpha = 0.05  # Learning rate
 gamma = 0.9  # Discount factor
 epsilon_start = 1.0  # Initial exploration rate
 epsilon_min = 0.01  # Minimum exploration rate
-epsilon_decay = 0.995  # Decay rate for epsilon
-num_episodes = 1000  # Number of episodes
-alpha_start = 0.1
+epsilon_decay = 0.9993  # Decay rate for epsilon
+num_episodes = 8000  # Number of episodes
+alpha_start = 1
 alpha_decay = 0.01
 
 # Define state-action space
@@ -69,11 +69,11 @@ def q_learning(env, num_episodes):
                 q_tables[i][state_index][actions[i]] += alpha * td_error
 
             state = next_state
+
         if np.sum(total_rewards) > np.sum(previous_total_rewards):
             epsilon = max(epsilon_min, epsilon * 0.99)  # Decay faster if improving
         else:
             epsilon = max(epsilon_min, epsilon * 0.999)  # Decay slower if not improving
-
             # Update previous total rewards
         previous_total_rewards = total_rewards
 
@@ -85,12 +85,19 @@ def q_learning(env, num_episodes):
 
 
 def main():
-    grid_size = (5, 5)
-    num_agents = 1
-    obstacles = [(0, 1), (0, 2), (0, 3), (2, 1), (2, 2), (2, 3), (4, 1), (4, 2),
-                 (4, 3)]
-    goals = [(4, 0)]
-    initial_positions = [(0, 4)]
+    grid_size = (10, 10)
+    num_agents = 4
+    obstacles = [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 6), (0, 7), (0, 8), (0, 9),
+                 (1, 0), (1, 1), (1, 2), (1, 3), (1, 4), (1, 6), (1, 7), (1, 8), (1, 9),
+                 (2, 0), (2, 1), (2, 2), (2, 3), (2, 4), (2, 6), (2, 7), (2, 8), (2, 9),
+                 (3, 0), (3, 1), (3, 2), (3, 3), (3, 4), (3, 6), (3, 7), (3, 8), (3, 9),
+                 (4, 0), (4, 1), (4, 2), (4, 3), (4, 4), (4, 6), (4, 7), (4, 8), (4, 9),
+                 (6, 0), (6, 1), (6, 2), (6, 3), (6, 4), (6, 6), (6, 7), (6, 8), (6, 9),
+                 (7, 0), (7, 1), (7, 2), (7, 3), (7, 4), (7, 6), (7, 7), (7, 8), (7, 9),
+                 (8, 0), (8, 1), (8, 2), (8, 3), (8, 4), (8, 6), (8, 7), (8, 8), (8, 9),
+                 (9, 0), (9, 1), (9, 2), (9, 3), (9, 4), (9, 6), (9, 7), (9, 8), (9, 9)]
+    goals = [(0, 5), (9, 5), (5, 0), (5, 9)]
+    initial_positions = [(9, 5), (0, 5), (5, 9), (5, 0)]
 
     env = GridEnv(grid_size, num_agents, obstacles, goals, initial_positions)
     q_tables = q_learning(env, num_episodes)

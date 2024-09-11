@@ -35,14 +35,27 @@ class GridEnv:
 
     def step(self, actions):
         rewards = np.zeros(self.num_agents)
+        collisions = [False] * self.num_agents
+
         if not self.next_agents:  # If next_agents is empty, initialize it
             self.next_agents = self.agents.copy()
 
-        for i, (agent, action) in enumerate(zip(self.agents, actions)):
-            if not self.done[i]:
-                next_agent = self._apply_action(agent, action)
-                if self._is_collision(next_agent) or any(np.array_equal(next_agent, other_agent) for j, other_agent in enumerate(self.next_agents) if j != i):
-                    rewards[i] -= 1  # Penalty for hitting an obstacle
+        # Compute next positions based on actions
+        next_agents = []
+        for agent, action in zip(self.agents, actions):
+            next_agents.append(self._apply_action(agent, action))
+
+        # Check for collisions
+        for i, next_agent in enumerate(next_agents):
+            if self._is_collision(next_agent) or any(np.array_equal(next_agent, other_agent) or np.array_equal(next_agent, self.agents[j])
+                                                     for j, other_agent in enumerate(next_agents) if j != i):
+                collisions[i] = True
+
+        # Update agent positions and calculate rewards if the episode is not done
+        for i, (agent, next_agent) in enumerate(zip(self.agents, next_agents)):
+            if not self.done[i]:  # Only update if the agent is not done
+                if collisions[i]:
+                    rewards[i] -= 1  # Penalty for collision
                     next_agent = agent  # Stay in the same place
                 elif self._is_goal(next_agent, i):
                     rewards[i] += 1  # Reward for reaching the goal
@@ -50,16 +63,18 @@ class GridEnv:
                 else:
                     current_distance = self._distance(agent, self.goals[i])
                     new_distance = self._distance(next_agent, self.goals[i])
-                    #distance_reward = (1 / (new_distance + 1) - 1 / (current_distance + 1)) * 1  # Positive reward for getting closer
-                    distance_reward = (current_distance - new_distance) * 100
+                    distance_reward = (current_distance - new_distance) * 1000 # Reward for getting closer
                     rewards[i] += distance_reward
+
                 self.next_agents[i] = next_agent
-                rewards[i] -= 1
+                rewards[i] -= 1  # Penalty for each step taken
             else:
                 self.next_agents[i] = agent
+
         self.agents = self.next_agents.copy()
         self.steps += 1
-        done = all(self.done) or self.steps >= 500  # Terminate after 100 steps or all agents done
+        done = all(self.done) or self.steps >= 500  # Terminate after 500 steps or if all agents are done
+
         return np.array(self.agents), rewards, done, {'steps': self.steps}
 
     def _distance(self, pos1, pos2):

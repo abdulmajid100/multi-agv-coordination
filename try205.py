@@ -1,16 +1,15 @@
 import numpy as np
 import random
-from grid_env_c import GridEnv
+from vac_env import GridEnv  # Ensure this imports your GridEnv class correctly
 
 # Q-learning parameters
-alpha = 0.05  # Learning rate
-gamma = 0.9  # Discount factor
-epsilon_start = 1.0  # Initial exploration rate
-epsilon_min = 0.01  # Minimum exploration rate
-epsilon_decay = 0.995  # Decay rate for epsilon
-num_episodes = 1000  # Number of episodes
 alpha_start = 0.1
 alpha_decay = 0.01
+gamma = 0.9
+epsilon_start = 1.0
+epsilon_min = 0.01
+epsilon_decay = 0.999
+num_episodes = 5000
 
 # Define state-action space
 def state_to_index(state, grid_size):
@@ -26,16 +25,13 @@ def state_to_index(state, grid_size):
 
     return index
 
-
-
 def action_to_index(action):
     return action
 
-
 def q_learning(env, num_episodes):
-    current_step = 0
     q_tables = [np.zeros(((env.grid_size[0] * env.grid_size[1]) ** env.num_agents, 5)) for _ in range(env.num_agents)]
     previous_total_rewards = float('-inf')
+
     for episode in range(num_episodes):
         state = env.reset()
         done = False
@@ -51,48 +47,42 @@ def q_learning(env, num_episodes):
                 else:
                     state_index = state_to_index(state, env.grid_size)
                     action = np.argmax(q_tables[i][state_index])  # Exploit
-
                 actions.append(action)
 
             next_state, rewards, done, info = env.step(actions)
-            current_step = info['steps']
             total_rewards += rewards
 
             for i in range(env.num_agents):
                 state_index = state_to_index(state, env.grid_size)
                 next_state_index = state_to_index(next_state, env.grid_size)
-
                 best_next_action = np.argmax(q_tables[i][next_state_index])
                 td_target = rewards[i] + gamma * q_tables[i][next_state_index][best_next_action]
                 td_error = td_target - q_tables[i][state_index][actions[i]]
-
                 q_tables[i][state_index][actions[i]] += alpha * td_error
 
             state = next_state
+
         if np.sum(total_rewards) > np.sum(previous_total_rewards):
             epsilon = max(epsilon_min, epsilon * 0.99)  # Decay faster if improving
         else:
             epsilon = max(epsilon_min, epsilon * 0.999)  # Decay slower if not improving
 
-            # Update previous total rewards
         previous_total_rewards = total_rewards
 
-        # Print episode progress and update epsilon
         if episode % 100 == 0:
             print(f"Episode {episode}/{num_episodes}, Total Rewards: {total_rewards}, Epsilon: {epsilon:.4f}")
 
     return q_tables
 
-
 def main():
     grid_size = (5, 5)
     num_agents = 1
-    obstacles = [(0, 1), (0, 2), (0, 3), (2, 1), (2, 2), (2, 3), (4, 1), (4, 2),
-                 (4, 3)]
+    obstacles = [(0, 1), (0, 2), (0, 3), (2, 1), (2, 2), (2, 3), (4, 1), (4, 2), (4, 3)]
     goals = [(4, 0)]
+    dirt_density = 0.2  # Adjust as needed
     initial_positions = [(0, 4)]
 
-    env = GridEnv(grid_size, num_agents, obstacles, goals, initial_positions)
+    env = GridEnv(grid_size, num_agents, obstacles, goals, dirt_density, initial_positions)
     q_tables = q_learning(env, num_episodes)
 
     print("Training completed.")
@@ -108,11 +98,10 @@ def main():
             action = np.argmax(q_tables[i][state_index])
             actions.append(action)
         actions_list.append(actions)
-        print(f"Agents' positions: {state}")
+        #print(f"Agents' positions: {state}")
         state, _, done, _ = env.step(actions)
 
     env.animate(actions_list)  # For animation, adjust actions list as needed
-
 
 if __name__ == "__main__":
     main()
