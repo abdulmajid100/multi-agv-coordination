@@ -26,8 +26,10 @@ class GridEnv:
         self.next_agents = self.agents.copy()  # Initialize next_agents in reset
         return np.array(self.agents)
 
-    def _create_dirt(self):
-        """Randomly place dirt in the grid based on dirt_density."""
+    def _create_dirt(self, seed=1):
+        """Randomly place dirt in the grid based on dirt_density with an optional seed."""
+        if seed is not None:
+            np.random.seed(1)
         num_cells = self.grid_size[0] * self.grid_size[1]
         num_dirt_cells = int(num_cells * self.dirt_density)
         dirt_cells = set()
@@ -65,24 +67,30 @@ class GridEnv:
         for i, (agent, next_agent) in enumerate(zip(self.agents, next_agents)):
             if not self.done[i]:  # Only update if the agent is not done
                 next_agent_tuple = tuple(next_agent)
+                agent_tuple = tuple(agent)
+
                 if collisions[i]:
                     rewards[i] -= 1  # Penalty for collision
                     next_agent = agent  # Stay in the same place
-                elif any(np.array_equal(next_agent_tuple, d) for d in map(tuple, self.dirt)):
-                    rewards[i] += 10000  # Reward for cleaning dirt
+                elif any(np.array_equal(next_agent_tuple, d) or np.array_equal(agent_tuple, d) for d in map(tuple, self.dirt)):
+                    rewards[i] += 1000  # Reward for cleaning dirt
                     self.dirt = [d for d in self.dirt if
-                                 not np.array_equal(d, next_agent_tuple)]  # Remove dirt after cleaning
+                                 not np.array_equal(d, next_agent_tuple) or not np.array_equal(d, agent_tuple)]  # Remove dirt after cleaning
                     #print(f"Agent {i} cleaned dirt at {next_agent}")  # Debug print
-                else:
-                    rewards[i] -= 1  # Penalty for each step taken
+                    if len(self.dirt) == 0:
+                        rewards[i] += 10000
+                        self.done[i] = True
+                elif (len(self.dirt) != 0):
+                    rewards[i] -= 10
 
+                #rewards[i] -= 1  # Penalty for each step taken
                 self.next_agents[i] = next_agent
             else:
                 self.next_agents[i] = agent
-
+        #print(self.dirt)
         self.agents = self.next_agents.copy()
         self.steps += 1
-        done = (len(self.dirt) == 0) or self.steps >= 500  # Terminate after cleaning all dirt or 500 steps
+        done = all(self.done) or self.steps >= 1000  # Terminate after cleaning all dirt or 500 steps
 
         return np.array(self.agents), rewards, done, {'steps': self.steps}
 

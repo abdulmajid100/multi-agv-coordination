@@ -3,7 +3,7 @@ import random
 from vac_env import GridEnv  # Ensure this imports your GridEnv class correctly
 
 # Q-learning parameters
-alpha_start = 0.1
+alpha_start = 1
 alpha_decay = 0.01
 gamma = 0.9
 epsilon_start = 1.0
@@ -75,12 +75,16 @@ def q_learning(env, num_episodes):
     return q_tables
 
 def main():
-    grid_size = (5, 5)
+    grid_size = (7, 7)
     num_agents = 1
-    obstacles = [(0, 1), (0, 2), (0, 3), (2, 1), (2, 2), (2, 3), (4, 1), (4, 2), (4, 3)]
-    goals = [(4, 0)]
+    obstacles = [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6),
+                 (2, 1), (2, 2), (2, 3), (2, 4), (2, 5),
+                 (4, 1), (4, 2), (4, 3), (4, 4), (4, 5),
+                 (6, 0), (6, 1), (6, 2), (6, 3), (6, 4), (6, 5), (6, 6)
+                 ]
+    goals = []
     dirt_density = 0.2  # Adjust as needed
-    initial_positions = [(0, 4)]
+    initial_positions = [(1, 6)]
 
     env = GridEnv(grid_size, num_agents, obstacles, goals, dirt_density, initial_positions)
     q_tables = q_learning(env, num_episodes)
@@ -89,7 +93,9 @@ def main():
 
     # Testing trained agents
     state = env.reset()
+
     done = False
+
     actions_list = []
     while not done:
         actions = []
