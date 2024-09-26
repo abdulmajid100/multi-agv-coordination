@@ -89,13 +89,13 @@ def train_sac(env, sac_agent, num_episodes=1000):
             state = next_state
 
         # Log the progress every 10 episodes
-        if (episode + 1) % 10 == 0:
+        if (episode + 1) % 1 == 0:
             print(f"Episode {episode + 1}/{num_episodes}, Total Reward: {total_reward}, Agent Positions: {env.agent_positions}")
 
 # Main Function
 def main():
     grid_size = (5, 5)  # 5x5 grid
-    num_agents = 2
+    num_agents = 1
     obstacles = [(1, 1), (1, 2), (2, 1)]  # Example obstacles
     goals = [(0, 4), (4, 0)]  # Define goals for each agent
     env = GridEnv(grid_size, num_agents, obstacles, goals)
