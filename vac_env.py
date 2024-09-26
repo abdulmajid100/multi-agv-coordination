@@ -74,8 +74,7 @@ class GridEnv:
                     next_agent = agent  # Stay in the same place
                 elif any(np.array_equal(next_agent_tuple, d) or np.array_equal(agent_tuple, d) for d in map(tuple, self.dirt)):
                     rewards[i] += 1000  # Reward for cleaning dirt
-                    self.dirt = [d for d in self.dirt if
-                                 not np.array_equal(d, next_agent_tuple) or not np.array_equal(d, agent_tuple)]  # Remove dirt after cleaning
+                    self.dirt = [d for d in self.dirt if not np.array_equal(d, next_agent_tuple) and not np.array_equal(d, agent_tuple)]  # Remove dirt after cleaning
                     #print(f"Agent {i} cleaned dirt at {next_agent}")  # Debug print
                     if len(self.dirt) == 0:
                         rewards[i] += 10000
@@ -90,7 +89,7 @@ class GridEnv:
         #print(self.dirt)
         self.agents = self.next_agents.copy()
         self.steps += 1
-        done = all(self.done) or self.steps >= 1000  # Terminate after cleaning all dirt or 500 steps
+        done = all(self.done) or self.steps >= 5000  # Terminate after cleaning all dirt or 500 steps
 
         return np.array(self.agents), rewards, done, {'steps': self.steps}
 

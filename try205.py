@@ -8,8 +8,8 @@ alpha_decay = 0.01
 gamma = 0.9
 epsilon_start = 1.0
 epsilon_min = 0.01
-epsilon_decay = 0.999
-num_episodes = 5000
+epsilon_decay = 0.9995
+num_episodes = 10000
 
 # Define state-action space
 def state_to_index(state, grid_size):
@@ -77,14 +77,13 @@ def q_learning(env, num_episodes):
 def main():
     grid_size = (7, 7)
     num_agents = 1
-    obstacles = [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6),
-                 (2, 1), (2, 2), (2, 3), (2, 4), (2, 5),
-                 (4, 1), (4, 2), (4, 3), (4, 4), (4, 5),
-                 (6, 0), (6, 1), (6, 2), (6, 3), (6, 4), (6, 5), (6, 6)
+    obstacles = [(1, 1), (1, 2), (1, 3), (1, 4), (1, 5),
+                 (3, 1), (3, 2), (3, 3), (3, 4), (3, 5),
+                 (5, 1), (5, 2), (5, 3), (5, 4), (5, 5)
                  ]
     goals = []
     dirt_density = 0.2  # Adjust as needed
-    initial_positions = [(1, 6)]
+    initial_positions = [(6, 6)]
 
     env = GridEnv(grid_size, num_agents, obstacles, goals, dirt_density, initial_positions)
     q_tables = q_learning(env, num_episodes)

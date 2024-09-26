@@ -101,6 +101,7 @@ def main():
     state = env.reset()
     done = False
     actions_list = []
+    print(state)
     while not done:
         actions = []
         for i in range(num_agents):
