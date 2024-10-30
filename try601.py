@@ -115,10 +115,10 @@ def update(frame):
             print(resource_states)
             if can_move(agv, shared_nodes_with_others, other_agvs, current_node, next_node):
                 # Reserve the next node for the AGV
-                resource_states[next_node] = agv
                 # Release the current node
-                if next_node != current_node:
-                    resource_states[current_node] = 0
+                resource_states[current_node] = 0
+
+                resource_states[next_node] = agv
                 # Move AGV to next node
                 agv_paths[agv].pop(0)  # Remove the current node from the path
                 print(f"{agv} moves from {current_node} to {next_node}")
