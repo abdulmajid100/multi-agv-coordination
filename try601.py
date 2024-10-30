@@ -21,14 +21,15 @@ G.add_edges_from(edges)
 
 # Define AGVs and their paths
 agv_paths = {
-    'AGV1': [1, 4, 11, 12, 13, 14, 15, 16, 17, 18, 19, 29],
-    'AGV2': [28, 18, 17, 16, 15, 14, 13, 12, 11, 4, 2],
-    'AGV3': [29, 19, 18, 17, 16, 15, 14, 13, 12, 11, 4, 3]
+    'AGV1': [20,10,11,4,5,4,6,6,4,11,10,20,20,10,11,4,1],
+    'AGV2': [11,12,13,23,23,13,12,11,4,5,4,6,6,4,11,12,13,23,23,13,12,11,4,2],
+    'AGV3': [3,4,11,12,13,14,15,16,26,26,16,15,14,13,12,11,4,5,4,
+             6,6,4,11,12,13,14,15,16,26,26,16,15,14,13,12,11,4,3]
 }
 
 # Initialize the reservation status of each node
 resource_states = {node: 0 for node in G.nodes()}
-
+print(resource_states)
 # AGV positions
 agv_positions = {agv: 0 for agv in agv_paths.keys()}
 
@@ -63,15 +64,14 @@ def can_move(agv, shared_nodes_with_others, other_agvs, current_node, next_node)
     # Condition 2: The next node is shared, but all shared nodes are not reserved by other AGVs
     if any(
             next_node in shared_nodes and
-            any(resource_states[shared_node] != 0 or resource_states[shared_node] != agv for shared_node in
+            any(resource_states[shared_node] == other_agv for shared_node in
                 shared_nodes)
             for other_agv, shared_nodes in shared_nodes_with_others.items()
     ):
         return False
-    else:
-        return True
 
-    return False
+
+    return True
 
 
 # Initialize plot
@@ -110,11 +110,15 @@ def update(frame):
                 shared_nodes_with_others[other_agv] = list(shared_nodes)
             current_node = path[0]
             next_node = path[1]
+            print(path)
+            print(shared_nodes_with_others)
+            print(resource_states)
             if can_move(agv, shared_nodes_with_others, other_agvs, current_node, next_node):
                 # Reserve the next node for the AGV
                 resource_states[next_node] = agv
                 # Release the current node
-                resource_states[current_node] = 0
+                if next_node != current_node:
+                    resource_states[current_node] = 0
                 # Move AGV to next node
                 agv_paths[agv].pop(0)  # Remove the current node from the path
                 print(f"{agv} moves from {current_node} to {next_node}")
