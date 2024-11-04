@@ -21,9 +21,9 @@ G.add_edges_from(edges)
 
 # Define AGVs and their paths
 agv_paths = {
-    'AGV1': [13, 12, 11, 4, 1],
-    'AGV2': [2, 4, 11, 12, 13, 14, 24],
-    'AGV3': [19, 18, 17, 16, 15, 14, 13, 23]
+    'AGV1': [1,4,11,12,13,14,15,16,17,18,19,29],
+    'AGV2': [28,18,17,16,15,14,13,12,11,4,2],
+    'AGV3': [29,19,18,17,16,15,14,13,12,11,4,3]
 }
 
 # Initialize the reservation status of each node
