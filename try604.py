@@ -105,6 +105,7 @@ def update(frame):
 
     # Move each AGV if possible
     for agv, tasks in agv_tasks.items():
+
         if tasks and len(tasks[0]) > 1:  # Check if there are tasks and nodes left in the current task
             other_agvs = [other_agv for other_agv in agv_tasks if other_agv != agv]
             shared_nodes_with_others = {other_agv: [] for other_agv in other_agvs}
@@ -128,17 +129,18 @@ def update(frame):
 
                 resource_states[next_node] = agv
                 # Release the current node
-
+                tasks[0].pop(0)
+                if len(tasks[0]) == 1:  # If the current task is completed, move to the next task
+                    last_node = tasks[0][-1]  # Get the last node of the completed task
+                    tasks.pop(0)  # Remove the completed task
+                    if tasks:  # If there are more tasks
+                        tasks[0].insert(0, last_node)  # Insert the last node of the previous task as the starting node
                 # Move AGV to next node
-                tasks[0].pop(0)  # Remove the current node from the current task
+                #tasks[0].pop(0)  # Remove the current node from the current task
                 print(f"{agv} moves from {current_node} to {next_node}")
             else:
                 print(f"{agv} waiting at {current_node}")
-        elif tasks:  # If the current task is completed, move to the next task
-            last_node = tasks[0][-1]  # Get the last node of the completed task
-            tasks.pop(0)  # Remove the completed task
-            if tasks:  # If there are more tasks
-                tasks[0].insert(0, last_node)  # Insert the last node of the previous task as the starting node
+
 
 # Create animation
 ani = animation.FuncAnimation(fig, update, frames=range(100), repeat=False, interval=1000)
