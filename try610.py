@@ -22,7 +22,7 @@ G.add_edges_from(edges)
 # Define AGVs and their tasks (multiple paths)
 agv_tasks = {
     'AGV1': [
-        [1, 4, 11, 10, 20],
+        [20],
         [20, 10, 11, 4, 5, 4, 6],
         [6, 4, 11, 10, 20],
         [20, 10, 11, 4, 1]
@@ -108,7 +108,7 @@ def update(frame):
     # Move each AGV if possible
     for agv, tasks in agv_tasks.items():
 
-        if tasks and len(tasks[0]) > 1:  # Check if there are tasks and nodes left in the current task
+        if tasks and len(tasks[0]) >= 1:  # Check if there are tasks and nodes left in the current task
             other_agvs = [other_agv for other_agv in agv_tasks if other_agv != agv]
             shared_nodes_with_others = {other_agv: [] for other_agv in other_agvs}
 
@@ -132,8 +132,21 @@ def update(frame):
 
 
 
-            current_node = tasks[0][0]
-            next_node = tasks[0][1]
+
+            if len(tasks[0]) > 1:
+                current_node = tasks[0][0]
+                next_node = tasks[0][1]
+                tasks[0].pop(0)
+            elif len(tasks[0]) == 1:  # If the current task is completed, move to the next task
+                #last_node = tasks[0][-1]  # Get the last node of the completed task
+                if len(tasks) > 1:
+                    current_node = tasks[0][0]
+                    tasks.pop(0)  # Remove the completed task
+                    next_node = tasks[0][0]
+                    if s == 1:
+                        s = 0
+                    """if tasks:  # If there are more tasks
+                        tasks[0].insert(0, last_node)  # Insert the last node of the previous task as the starting node"""
             print(tasks)
             print(current_task)
             print(other_current_task)
@@ -145,15 +158,7 @@ def update(frame):
 
                 resource_states[next_node] = agv
                 # Release the current node
-                tasks[0].pop(0)
-                if len(tasks[0]) == 1:  # If the current task is completed, move to the next task
-                    last_node = tasks[0][-1]  # Get the last node of the completed task
-                    if len(tasks) > 1:
-                        tasks.pop(0)  # Remove the completed task
-                        if s == 1:
-                            s = 0
-                        if tasks:  # If there are more tasks
-                            tasks[0].insert(0, last_node)  # Insert the last node of the previous task as the starting node
+
                 # Move AGV to next node
                 #tasks[0].pop(0)  # Remove the current node from the current task
                 print(f"{agv} moves from {current_node} to {next_node}")
