@@ -130,28 +130,24 @@ def update(frame):
                         shared_nodes = set(current_task) & set(other_current_task)
                         shared_nodes_with_others[other_agv] = list(shared_nodes)
 
-
-
-
+            current_node = tasks[0][0]
             if len(tasks[0]) > 1:
-                current_node = tasks[0][0]
                 next_node = tasks[0][1]
 
             elif len(tasks[0]) == 1:  # If the current task is completed, move to the next task
                 #last_node = tasks[0][-1]  # Get the last node of the completed task
                 if len(tasks) > 1:
-                    current_node = tasks[0][0]
                     next_node = tasks[1][0]
 
                     """if tasks:  # If there are more tasks
                         tasks[0].insert(0, last_node)  # Insert the last node of the previous task as the starting node"""
-            """print(tasks)
+            print(tasks)
             print(current_task)
             print(next_node)
             print(current_node)
             print(other_current_task)
             print(shared_nodes_with_others)
-            print(resource_states)"""
+            print(resource_states)
             if can_move(agv, shared_nodes_with_others, other_agvs, current_node, next_node):
                 # Reserve the next node for the AGV
                 resource_states[current_node] = 0

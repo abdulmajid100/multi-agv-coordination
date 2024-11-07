@@ -152,8 +152,7 @@ def update(frame):
                         tasks.pop(0)  # Remove the completed task
                         if s == 1:
                             s = 0
-                        if tasks:  # If there are more tasks
-                            tasks[0].insert(0, last_node)  # Insert the last node of the previous task as the starting node
+                        tasks[0].insert(0, last_node)  # Insert the last node of the previous task as the starting node
                 # Move AGV to next node
                 #tasks[0].pop(0)  # Remove the current node from the current task
                 print(f"{agv} moves from {current_node} to {next_node}")
