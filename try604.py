@@ -22,13 +22,11 @@ G.add_edges_from(edges)
 # Define AGVs and their tasks (multiple paths)
 agv_tasks = {
     'AGV1': [
-        [1, 4, 11, 10, 20],
-        [20, 10, 11, 4, 5, 4, 6],
+        [11, 4, 5, 4, 6],
         [6, 4, 11, 10, 20],
         [20, 10, 11, 4, 1]
     ],
     'AGV2': [
-        [2, 4, 11, 12, 13, 14, 24],
         [24, 14, 13, 12, 11, 4, 5, 4, 6],
         [6, 4, 11, 12, 13, 14, 24],
         [24, 14, 13, 12, 11, 4, 2]
@@ -120,6 +118,7 @@ def update(frame):
                         other_current_task = agv_tasks[other_agv][0]
                         shared_nodes = set(current_task) & set(other_current_task)
                         shared_nodes_with_others[other_agv] = list(shared_nodes)
+                        print("hi", shared_nodes_with_others[other_agv])
                     if 5 in shared_nodes_with_others[other_agv] or s == 1:
                         s = 1
                         current_task = tasks[0]
@@ -129,6 +128,7 @@ def update(frame):
                             other_current_task = agv_tasks[other_agv][0]
                         shared_nodes = set(current_task) & set(other_current_task)
                         shared_nodes_with_others[other_agv] = list(shared_nodes)
+                        print("how", shared_nodes_with_others[other_agv])
 
 
 

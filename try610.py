@@ -22,20 +22,20 @@ G.add_edges_from(edges)
 # Define AGVs and their tasks (multiple paths)
 agv_tasks = {
     'AGV1': [
-        [20],
-        [20, 10, 11, 4, 5, 4, 6],
+
+        [25, 15, 14, 13, 12, 11, 10, 11, 4, 5, 4, 6],
         [6, 4, 11, 10, 20],
         [20, 10, 11, 4, 1]
     ],
     'AGV2': [
-        [2, 4, 11, 12, 13, 14, 24],
+
         [24, 14, 13, 12, 11, 4, 5, 4, 6],
         [6, 4, 11, 12, 13, 14, 24],
         [24, 14, 13, 12, 11, 4, 2]
     ],
     'AGV3': [
-        [3, 4, 11, 12, 13, 14, 15, 16, 17, 18, 28],
-        [28, 18, 17, 16, 15, 14, 13, 12, 11, 4, 5, 4, 6],
+
+        [26, 16, 15, 14, 13, 12, 11, 4, 5, 4, 6],
         [6, 4, 11, 12, 13, 14, 15, 16, 17, 18, 28],
         [28, 18, 17, 16, 15, 14, 13, 12, 11, 4, 3]
     ]
@@ -84,7 +84,7 @@ def can_move(agv, shared_nodes_with_others, other_agvs, current_node, next_node)
 # Initialize plot
 fig, ax = plt.subplots()
 pos = nx.kamada_kawai_layout(G)
-
+x = []
 # Update function for animation
 def update(frame):
     ax.clear()
@@ -104,24 +104,29 @@ def update(frame):
     # Skip movement on the first frame to show initial positions
     if frame == 0:
         return
-
+    global x
     # Move each AGV if possible
     for agv, tasks in agv_tasks.items():
-
-        if tasks and len(tasks[0]) >= 1:  # Check if there are tasks and nodes left in the current task
+        w = 0
+        if tasks and len(tasks[0]) >= 1 and w == 0:  # Check if there are tasks and nodes left in the current task
             other_agvs = [other_agv for other_agv in agv_tasks if other_agv != agv]
             shared_nodes_with_others = {other_agv: [] for other_agv in other_agvs}
 
             for other_agv in other_agvs:
                 # Calculate shared nodes only for the current tasks
                 if tasks and agv_tasks[other_agv]:
-                    if 5 not in shared_nodes_with_others[other_agv] and s == 0:
+                    if other_agv not in x or agv not in x:
                         current_task = tasks[0]
                         other_current_task = agv_tasks[other_agv][0]
                         shared_nodes = set(current_task) & set(other_current_task)
                         shared_nodes_with_others[other_agv] = list(shared_nodes)
-                    if 5 in shared_nodes_with_others[other_agv] or s == 1:
-                        s = 1
+                        #print(x)
+                    if 5 in shared_nodes_with_others[other_agv] or other_agv in x and agv in x:
+                        if agv not in x or other_agv not in x:
+                            x.append(agv)
+                            x.append(other_agv)
+
+
                         current_task = tasks[0]
                         if len(agv_tasks[other_agv]) > 1:
                             other_current_task = agv_tasks[other_agv][0] + agv_tasks[other_agv][1]
@@ -129,6 +134,14 @@ def update(frame):
                             other_current_task = agv_tasks[other_agv][0]
                         shared_nodes = set(current_task) & set(other_current_task)
                         shared_nodes_with_others[other_agv] = list(shared_nodes)
+
+                        if len(tasks[0]) == 1:
+                            x.remove(agv)
+                            x.remove(other_agv)
+                        #print("hihi")
+                        print(x)
+                        print(tasks[0])
+                        #print(shared_nodes_with_others[other_agv])
 
             current_node = tasks[0][0]
             if len(tasks[0]) > 1:
@@ -141,31 +154,34 @@ def update(frame):
 
                     """if tasks:  # If there are more tasks
                         tasks[0].insert(0, last_node)  # Insert the last node of the previous task as the starting node"""
-            print(tasks)
+            #print(tasks)
             print(current_task)
-            print(next_node)
+            #print(next_node)
             print(current_node)
             print(other_current_task)
             print(shared_nodes_with_others)
             print(resource_states)
-            if can_move(agv, shared_nodes_with_others, other_agvs, current_node, next_node):
-                # Reserve the next node for the AGV
-                resource_states[current_node] = 0
-
-                resource_states[next_node] = agv
-
-                tasks[0].pop(0)
-                if len(tasks[0]) == 0:
-                # Release the current node
-                    if len(tasks) > 1:
-                        tasks.pop(0)  # Remove the completed task
-                        if s == 1:
-                            s = 0
-                # Move AGV to next node
-                #tasks[0].pop(0)  # Remove the current node from the current task
-                print(f"{agv} moves from {current_node} to {next_node}")
+            if len(tasks) == 1 and len(tasks[0]) == 1:
+                w = 1
             else:
-                print(f"{agv} waiting at {current_node}")
+                if can_move(agv, shared_nodes_with_others, other_agvs, current_node, next_node):
+                    # Reserve the next node for the AGV
+                    resource_states[current_node] = 0
+
+                    resource_states[next_node] = agv
+
+                    tasks[0].pop(0)
+                    if len(tasks[0]) == 0:
+                        # Release the current node
+                        if len(tasks) > 1:
+                            tasks.pop(0)  # Remove the completed task
+                            if s == 1:
+                                s = 0
+                    # Move AGV to next node
+                    # tasks[0].pop(0)  # Remove the current node from the current task
+                    print(f"{agv} moves from {current_node} to {next_node}")
+                else:
+                    print(f"{agv} waiting at {current_node}")
 
 
 # Create animation
