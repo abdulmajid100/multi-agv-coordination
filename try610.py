@@ -34,8 +34,8 @@ agv_tasks = {
         [24, 14, 13, 12, 11, 4, 5, 4, 6],
         [6, 4, 11, 12, 13, 14, 24],
         [24, 14, 13, 12, 11, 4, 2],
-        [2,4,11,12,13,14,15,16,17,18,28],
-        [28,18,17,16,15,14,13,12,11,4,5,4,6],
+        [2,4,11,12,13,14,15,16,26],
+        [26,16,15,14,13,12,11,4,5,4,6],
         [6,4,11,12,13,14,15,16,26]
     ],
     'AGV3': [
@@ -83,14 +83,23 @@ calculate_shared_nodes()
 def can_move(agv, shared_nodes_with_others, other_agvs, current_node, next_node):
     if all(next_node not in shared_nodes_with_others[other_agv] for other_agv in other_agvs):
         return True
-    if any(
+    elif not any(
         next_node in shared_nodes and
         any(resource_states[shared_node] == other_agv for shared_node in shared_nodes)
         for other_agv, shared_nodes in shared_nodes_with_others.items()
     ):
-        return False
-    return True
-
+        return True
+    return False
+def can_move2(agv, shared_nodes_with_others, other_agvs, current_node, next_node):
+    if all(next_node not in shared_nodes_with_others[other_agv] for other_agv in other_agvs):
+        return True
+    elif all(
+        next_node not in shared_nodes or
+        all(resource_states[shared_node] != other_agv for shared_node in shared_nodes)
+        for other_agv, shared_nodes in shared_nodes_with_others.items()
+    ):
+        return True
+    return False
 # Initialize plot
 fig, ax = plt.subplots()
 pos = nx.kamada_kawai_layout(G)
