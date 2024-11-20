@@ -7,9 +7,9 @@ alpha = 0.05  # Learning rate
 gamma = 0.9  # Discount factor
 epsilon_start = 1.0  # Initial exploration rate
 epsilon_min = 0.01  # Minimum exploration rate
-epsilon_decay = 0.995  # Decay rate for epsilon
-num_episodes = 1000  # Number of episodes
-alpha_start = 0.1
+epsilon_decay = 0.999  # Decay rate for epsilon
+num_episodes = 3000  # Number of episodes
+alpha_start = 1
 alpha_decay = 0.01
 
 # Define state-action space
@@ -85,12 +85,14 @@ def q_learning(env, num_episodes):
 
 
 def main():
-    grid_size = (5, 5)
-    num_agents = 1
-    obstacles = [(0, 1), (0, 2), (0, 3), (2, 1), (2, 2), (2, 3), (4, 1), (4, 2),
-                 (4, 3)]
-    goals = [(4, 0)]
-    initial_positions = [(0, 4)]
+    grid_size = (9, 9)
+    num_agents = 2
+    obstacles = [(1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6), (1, 7),
+                 (3, 1), (3, 2), (3, 3), (3, 4), (3, 5), (3, 6), (3, 7),
+                 (5, 1), (5, 2), (5, 3), (5, 4), (5, 5), (5, 6), (5, 7),
+                 (7, 1), (7, 2), (7, 3), (7, 4), (7, 5), (7, 6), (7, 7)]
+    goals = [(8, 5), (2,2)]
+    initial_positions = [(2, 6),(6, 2)]
 
     env = GridEnv(grid_size, num_agents, obstacles, goals, initial_positions)
     q_tables = q_learning(env, num_episodes)

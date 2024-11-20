@@ -67,7 +67,7 @@ class GridEnv:
                     rewards[i] += distance_reward
 
                 self.next_agents[i] = next_agent
-                rewards[i] -= 1  # Penalty for each step taken
+                rewards[i] -= 5  # Penalty for each step taken
             else:
                 self.next_agents[i] = agent
 
