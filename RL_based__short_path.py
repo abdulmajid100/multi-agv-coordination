@@ -86,13 +86,15 @@ def q_learning(env, num_episodes):
 
 def main():
     grid_size = (9, 9)
-    num_agents = 2
+    num_agents = 1
     obstacles = [(1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6), (1, 7),
-                 (3, 1), (3, 2), (3, 3), (3, 4), (3, 5), (3, 6), (3, 7),
+                 (2, 7),
+                 (3, 1), (3, 3), (3, 4), (3, 5), (3, 6), (3, 7),
+                 (4, 1),
                  (5, 1), (5, 2), (5, 3), (5, 4), (5, 5), (5, 6), (5, 7),
                  (7, 1), (7, 2), (7, 3), (7, 4), (7, 5), (7, 6), (7, 7)]
-    goals = [(8, 5), (2,2)]
-    initial_positions = [(2, 6),(6, 2)]
+    goals = [(2, 6)]
+    initial_positions = [(6, 2)]
 
     env = GridEnv(grid_size, num_agents, obstacles, goals, initial_positions)
     q_tables = q_learning(env, num_episodes)

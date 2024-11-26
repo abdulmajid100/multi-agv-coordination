@@ -34,8 +34,7 @@ agv_tasks = {
         [24, 14, 13, 12, 11, 4, 2]
     ],
     'AGV3': [
-        [3, 4, 11, 12, 13, 14, 15, 16, 17, 18, 28],
-        [28, 18, 17, 16, 15, 14, 13, 12, 11, 4, 5, 4, 6],
+        [17, 16, 15, 14, 13, 12, 11, 4, 5, 4, 6],
         [6, 4, 11, 12, 13, 14, 15, 16, 17, 18, 28],
         [28, 18, 17, 16, 15, 14, 13, 12, 11, 4, 3]
     ],
@@ -128,18 +127,8 @@ def update(frame):
             for other_agv in other_agvs:
                 # Calculate shared nodes only for the current tasks
                 if tasks and agv_tasks[other_agv]:
-                    if other_agv not in x or agv not in x:
-                        current_task = tasks[0]
-                        other_current_task = agv_tasks[other_agv][0]
-                        shared_nodes = set(current_task) & set(other_current_task)
-                        shared_nodes_with_others[other_agv] = list(shared_nodes)
                         #print(x)
-                    if 5 in shared_nodes_with_others[other_agv] or other_agv in x and agv in x:
-                        if agv not in x or other_agv not in x:
-                            x.append(agv)
-                            x.append(other_agv)
-
-
+                    if agv_tasks[other_agv][0][-1] == tasks[0][-1]:
                         current_task = tasks[0]
                         if len(agv_tasks[other_agv]) > 1:
                             other_current_task = agv_tasks[other_agv][0] + agv_tasks[other_agv][1]
@@ -148,13 +137,12 @@ def update(frame):
                         shared_nodes = set(current_task) & set(other_current_task)
                         shared_nodes_with_others[other_agv] = list(shared_nodes)
 
-                        if len(tasks[0]) == 1:
-                            x.remove(agv)
-                            x.remove(other_agv)
-                        #print("hihi")
-                        print(x)
-                        print(tasks[0])
-                        #print(shared_nodes_with_others[other_agv])
+
+                    else:
+                        current_task = tasks[0]
+                        other_current_task = agv_tasks[other_agv][0]
+                        shared_nodes = set(current_task) & set(other_current_task)
+                        shared_nodes_with_others[other_agv] = list(shared_nodes)
 
             current_node = tasks[0][0]
             if len(tasks[0]) > 1:
