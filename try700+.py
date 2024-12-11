@@ -23,9 +23,9 @@ G.add_edges_from(edges)
 
 # Define AGVs and their tasks
 agv_tasks = {
-    'AGV1': [[1, 4, 11, 10, 20]],
-    'AGV2': [[12, 13, 14, 15, 25]],
-    'AGV3': [[6, 4, 11, 12, 13, 14, 15, 16, 17, 18, 19, 29]],
+    'AGV1': [[28, 18, 19, 29]],
+    'AGV2': [[2, 4, 11, 12, 13, 14, 15, 25]],
+    'AGV3': [[3, 4, 11, 12, 13, 14, 15, 16, 17, 18, 19, 29]],
     'GEN': [[9, 16, 15, 25]]
 }
 
@@ -62,21 +62,27 @@ def choose_action(state):
 
 # Deadlock detection (checks if moving causes conflicts)
 def detect_deadlock(agv, current_node, next_node):
+    # Get other AGVs excluding the current one
     other_agvs = [other_agv for other_agv in agv_tasks if other_agv != agv]
     shared_nodes_with_others = {other_agv: [] for other_agv in other_agvs}
+
     for other_agv, tasks in agv_tasks.items():
-        if other_agv != agv and tasks and len(tasks[0]) > 1:
-            # Check if the next node is shared and occupied by another AGV
-            current_task = tasks[0]
-            other_current_task = agv_tasks[other_agv][0]
+        if other_agv != agv and agv_tasks[agv] and len(agv_tasks[agv][0]) > 1 and len(tasks) > 0 and len(tasks[0]) > 1:
+            current_task = agv_tasks[agv][0]
+            other_current_task = tasks[0]
+            # Find shared nodes between the current AGV's task and the other AGV's task
             shared_nodes = set(current_task) & set(other_current_task)
             shared_nodes_with_others[other_agv] = list(shared_nodes)
-            if any((resource_states[shared_node] == other_agv for shared_node in shared_nodes)
-            for other_agv, shared_nodes in shared_nodes_with_others.items()
-                ):
-                return True
-    return False
 
+            # Check if any shared node is occupied by another AGV
+            if any(resource_states[shared_node] == other_agv for shared_node in shared_nodes):
+                #print(resource_states)
+                #print(current_task)
+                return True  # Return True if a deadlock is detected
+            #print(current_task)
+            #print(shared_nodes_with_others)
+    return False  # Return False if no deadlock is detected
+#print(detect_deadlock('AGV1', current_node, next_node))
 # Update Q-table for a single AGV
 def update_q_table(agv):
     if agv_tasks[agv]:
@@ -103,6 +109,7 @@ def update_q_table(agv):
                 resource_states[current_node] = 0
                 resource_states[next_node] = agv
                 agv_tasks[agv][0].pop(0)
+                print(agv_tasks[agv][0])
             elif action == 'stop':
                 Q[state][action] += alpha * (reward - Q[state][action])  # Update Q-value for stop
         elif len(current_task) == 1:  # Remove task if completed
