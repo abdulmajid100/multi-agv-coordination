@@ -31,9 +31,8 @@ class Agent:
     def select_action(self, state):
         state = torch.FloatTensor(state)
         probabilities = self.policy_net(state)
-        probabilities = probabilities / probabilities.sum()  # Normalize probabilities
         action = np.random.choice(len(probabilities), p=probabilities.detach().numpy())
-        return action, torch.log(probabilities[action])
+        return action, probabilities[action]
 
     def update_policy(self, rewards, log_probs):
         discounted_rewards = []
@@ -77,35 +76,27 @@ def create_graph():
 
 # Function to animate the agents' movements
 def animate_agents(agents_paths, G):
-    # Define positions for nodes in a circular layout
     pos = {node: (np.cos(2 * np.pi * node / len(G.nodes)), np.sin(2 * np.pi * node / len(G.nodes))) for node in G.nodes}
 
     fig, ax = plt.subplots()
     nx.draw(G, pos, ax=ax, with_labels=True, node_color='lightblue', node_size=500, font_size=10)
 
-    # Define unique colors for each agent
-    colors = ['red', 'blue', 'green', 'orange', 'purple', 'pink', 'yellow', 'cyan']  # Add more colors if needed
-    num_agents = len(agents_paths)
-    agent_scatters = [ax.scatter([], [], s=200, color=colors[i % len(colors)], label=f'Agent {i + 1}') for i in
-                      range(num_agents)]
+    # Create a scatter plot for agents
+    agent_scatters = [ax.scatter([], [], s=100) for _ in range(len(agents_paths))]
 
     def update(frame):
-        # Clear the previous frame
         ax.clear()
         nx.draw(G, pos, ax=ax, with_labels=True, node_color='lightblue', node_size=500, font_size=10)
 
-        # Update the position of each agent
         for i, path in enumerate(agents_paths):
-            if frame < len(path):  # Ensure the frame index is within the path length
+            if frame < len(path):
                 node = path[frame]
-                agent_scatters[i] = ax.scatter(pos[node][0], pos[node][1], s=200, color=colors[i % len(colors)],
-                                               label=f'Agent {i + 1}')
+                agent_scatters[i] = ax.scatter(pos[node][0], pos[node][1], s=100, color='red', label=f'Agent {i + 1}')
 
-        # Add a legend to show agent labels
-        ax.legend()
+        return agent_scatters
 
-    # Create the animation
     ani = animation.FuncAnimation(fig, update, frames=max(len(path) for path in agents_paths), blit=False, repeat=False)
+    plt.legend()
     plt.show()
 
 
@@ -124,7 +115,7 @@ def train_agents(num_agents, num_episodes, state_size, action_size):
             visited_nodes = set()  # Track visited nodes
             done = False
             steps = 0
-            max_steps = 3  # Limit the number of steps per episode
+            max_steps = 100  # Limit the number of steps per episode
 
             while not done and steps < max_steps:
                 steps += 1
@@ -170,6 +161,6 @@ action_size = 30  # Number of possible actions (one for each node)
 
 # Train the agents and get their paths
 agents_paths, G = train_agents(num_agents, num_episodes, state_size, action_size)
-print(agents_paths)
+
 # Animate the agents' movements
 animate_agents(agents_paths, G)
