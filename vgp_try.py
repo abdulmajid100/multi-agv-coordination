@@ -87,55 +87,62 @@ def train_agents(num_agents, num_episodes, state_size, action_size):
 
     for episode in range(num_episodes):
         print(f"Episode {episode + 1}/{num_episodes}")  # Output progress
+        done = False
+        steps = 0
+        max_steps = 200  # Limit the number of steps per episode
         agents_paths = [[] for _ in range(num_agents)]
-        for agent_index, agent in enumerate(agents):
-            state = random.choice(list(G.nodes))  # Start from a random node
+        state = random.sample(list(G.nodes), 3)
+        while not done and steps < max_steps:
+
+            visited_nodes = []
+              # Start from a random node
             log_probs = []
             rewards = []
-            visited_nodes = set()  # Track visited nodes
-            done = False
-            steps = 0
-            max_steps = 10  # Limit the number of steps per episode
+            next_state = [None] * num_agents
+            # Track visited nodes
 
-            while not done and steps < max_steps:
-                steps += 1
+            steps += 1
+            for agent_index, agent in enumerate(agents):
+
                 # Get the current state representation (e.g., current node)
                 state_vector = np.zeros(state_size)
-                state_vector[state - 1] = 1  # One-hot encoding of the current state
+                state_vector[state[agent_index] - 1] = 1  # One-hot encoding of the current state
 
                 action, log_prob = agent.select_action(state_vector)
-                next_state = random.choice(list(G.successors(state))) if list(
-                    G.successors(state)) else state  # Move to a successor or stay
+                print(action)
+                next_state[agent_index] = random.choice(list(G.successors(state[agent_index]))) if list(
+                    G.successors(state[agent_index])) else state[agent_index]  # Move to a successor or stay
 
                 # Reward function
-                reward = -1 if next_state == state else 1  # Penalize staying in the same place
-                if next_state in visited_nodes:
-                    reward -= 0.5  # Penalize revisiting nodes
+                reward = 0 if next_state[agent_index] == state[agent_index] else 1  # Penalize staying in the same place
+                if next_state[agent_index] in visited_nodes:
+                    reward -= 10  # Penalize revisiting nodes
+                    done = True
                 else:
                     reward += 1  # Reward exploring new nodes
-                visited_nodes.add(next_state)
-
-                log_probs.append(log_prob)
-                rewards.append(reward)
-                agents_paths[agent_index].append(next_state)  # Store the path
-                state = next_state
+                    visited_nodes.append(next_state[agent_index])
+                    visited_nodes = (visited_nodes)[-2:]
+                    log_probs.append(log_prob)
+                    rewards.append(reward)
+                    agents_paths[agent_index].append(next_state[agent_index])  # Store the path
+                    state[agent_index] = next_state[agent_index]
 
                 # Check if the goal is reached
-                #done = (next_state == 29)  # Example condition to end the episode (reaching node 29)
+                # done = (next_state == 29)  # Example condition to end the episode (reaching node 29)
 
             if steps >= max_steps:
                 print(f"Agent {agent_index + 1} terminated episode due to step limit.")
-
-            agent.update_policy(rewards, log_probs)
+            if not done:
+                agent.update_policy(rewards, log_probs)
             print(
                 f"  Agent {agent_index + 1} finished episode with path: {agents_paths[agent_index]}")  # Output agent progress
-
-    return agents_paths, G
+            print(visited_nodes)
+        return agents_paths, G
 
 
 # Parameters
 num_agents = 3
-num_episodes = 10
+num_episodes = 1000
 state_size = 30  # Number of nodes in the graph
 action_size = 30  # Number of possible actions (one for each node)
 
