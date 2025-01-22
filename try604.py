@@ -22,20 +22,21 @@ G.add_edges_from(edges)
 # Define AGVs and their tasks (multiple paths)
 agv_tasks = {
     'AGV1': [
-        [11, 4, 5, 4, 6],
+        [20, 10, 11, 4, 5, 4, 6],
         [6, 4, 11, 10, 20],
         [20, 10, 11, 4, 1]
     ],
     'AGV2': [
-        [24, 14, 13, 12, 11, 4, 5, 4, 6],
-        [6, 4, 11, 12, 13, 14, 24],
-        [24, 14, 13, 12, 11, 4, 2]
+        [11, 12, 13, 23],
+        [23, 13, 12, 11, 4, 5, 4, 6],
+        [6, 4, 11, 12, 13, 23],
+        [23, 13, 12, 11, 4, 2]
     ],
     'AGV3': [
-        [3, 4, 11, 12, 13, 14, 15, 16, 17, 18, 28],
-        [28, 18, 17, 16, 15, 14, 13, 12, 11, 4, 5, 4, 6],
-        [6, 4, 11, 12, 13, 14, 15, 16, 17, 18, 28],
-        [28, 18, 17, 16, 15, 14, 13, 12, 11, 4, 3]
+        [3, 4, 11, 12, 13, 14, 15, 16, 26],
+        [26, 16, 15, 14, 13, 12, 11, 4, 5, 4, 6],
+        [6, 4, 11, 12, 13, 14, 15, 16, 26],
+        [26, 16, 15, 14, 13, 12, 11, 4, 3]
     ]
 }
 
@@ -87,7 +88,6 @@ pos = nx.kamada_kawai_layout(G)
 def update(frame):
     ax.clear()
     nx.draw(G, pos, with_labels=True, arrows=True, ax=ax)
-    s = 0
 
     # Draw AGVs at their current positions
     for agv, tasks in agv_tasks.items():
@@ -113,30 +113,14 @@ def update(frame):
             for other_agv in other_agvs:
                 # Calculate shared nodes only for the current tasks
                 if tasks and agv_tasks[other_agv]:
-                    if 5 not in shared_nodes_with_others[other_agv] and s == 0:
-                        current_task = tasks[0]
-                        other_current_task = agv_tasks[other_agv][0]
-                        shared_nodes = set(current_task) & set(other_current_task)
-                        shared_nodes_with_others[other_agv] = list(shared_nodes)
-                        print("hi", shared_nodes_with_others[other_agv])
-                    if 5 in shared_nodes_with_others[other_agv] or s == 1:
-                        s = 1
-                        current_task = tasks[0]
-                        if len(agv_tasks[other_agv]) > 1:
-                            other_current_task = agv_tasks[other_agv][0] + agv_tasks[other_agv][1]
-                        else:
-                            other_current_task = agv_tasks[other_agv][0]
-                        shared_nodes = set(current_task) & set(other_current_task)
-                        shared_nodes_with_others[other_agv] = list(shared_nodes)
-                        print("how", shared_nodes_with_others[other_agv])
-
-
+                    current_task = tasks[0]
+                    other_current_task = agv_tasks[other_agv][0]
+                    shared_nodes = set(current_task) & set(other_current_task)
+                    shared_nodes_with_others[other_agv] = list(shared_nodes)
 
             current_node = tasks[0][0]
             next_node = tasks[0][1]
             print(tasks)
-            print(current_task)
-            print(other_current_task)
             print(shared_nodes_with_others)
             print(resource_states)
             if can_move(agv, shared_nodes_with_others, other_agvs, current_node, next_node):
@@ -148,10 +132,8 @@ def update(frame):
                 tasks[0].pop(0)
                 if len(tasks[0]) == 1:  # If the current task is completed, move to the next task
                     last_node = tasks[0][-1]  # Get the last node of the completed task
-                    if len(tasks) > 1:
-                        tasks.pop(0)  # Remove the completed task
-                        if s == 1:
-                            s = 0
+                    tasks.pop(0)  # Remove the completed task
+                    if tasks:  # If there are more tasks
                         tasks[0].insert(0, last_node)  # Insert the last node of the previous task as the starting node
                 # Move AGV to next node
                 #tasks[0].pop(0)  # Remove the current node from the current task

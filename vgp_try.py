@@ -71,6 +71,7 @@ def create_graph():
         (28, 18), (18, 19), (19, 18), (19, 29), (29, 19), (9, 16),
         (16, 9)
     ]
+    G.remove_nodes_from([7, 8])
     G.add_edges_from(edges)
     return G
 
@@ -89,9 +90,13 @@ def train_agents(num_agents, num_episodes, state_size, action_size):
         print(f"Episode {episode + 1}/{num_episodes}")  # Output progress
         done = False
         steps = 0
-        max_steps = 200  # Limit the number of steps per episode
+        max_steps = 20  # Limit the number of steps per episode
         agents_paths = [[] for _ in range(num_agents)]
-        state = random.sample(list(G.nodes), 3)
+        excluded_nodes = {7, 8}
+        available_nodes = [node for node in G.nodes]
+        print(f"Available nodes: {available_nodes}")
+        # Randomly sample 3 nodes from the available nodes
+        state = random.sample(available_nodes, 3)
         while not done and steps < max_steps:
 
             visited_nodes = []
@@ -191,6 +196,6 @@ def update(frame):
 
 
 # Create the animation
-ani = animation.FuncAnimation(fig, update, frames=max(len(path) for path in agents_paths), blit=False, repeat=False, interval=1000)
+ani = animation.FuncAnimation(fig, update, frames=max(len(path) for path in agents_paths), blit=False, repeat=False, interval=2000)
 plt.show()
 
