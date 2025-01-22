@@ -1,175 +1,203 @@
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
 import networkx as nx
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-import random
-
-
-# Define the Policy Network
-class PolicyNetwork(nn.Module):
-    def __init__(self, state_size, action_size):
-        super(PolicyNetwork, self).__init__()
-        self.fc1 = nn.Linear(state_size, 128)
-        self.fc2 = nn.Linear(128, action_size)
-
-    def forward(self, x):
-        x = F.relu(self.fc1(x))
-        return F.softmax(self.fc2(x), dim=-1)
-
-
-# Define the Agent
-class Agent:
-    def __init__(self, state_size, action_size):
-        self.policy_net = PolicyNetwork(state_size, action_size)
-        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=0.01)
-        self.gamma = 0.99  # Discount factor
-
-    def select_action(self, state):
-        state = torch.FloatTensor(state)
-        probabilities = self.policy_net(state)
-        probabilities = probabilities / probabilities.sum()  # Normalize probabilities
-        action = np.random.choice(len(probabilities), p=probabilities.detach().numpy())
-        return action, torch.log(probabilities[action])
-
-    def update_policy(self, rewards, log_probs):
-        discounted_rewards = []
-        for t in range(len(rewards)):
-            G = sum(self.gamma ** i * rewards[i + t] for i in range(len(rewards) - t))
-            discounted_rewards.append(G)
-        discounted_rewards = torch.FloatTensor(discounted_rewards)
-
-        # Normalize the rewards only if there are enough data points
-        if len(discounted_rewards) > 1:
-            discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / (discounted_rewards.std() + 1e-9)
-
-        # Calculate loss
-        loss = -torch.sum(torch.stack(log_probs) * discounted_rewards)
-
-        # Update the policy
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-
 
 # Initialize the directed graph
-def create_graph():
-    G = nx.DiGraph()
-    nodes = list(range(1, 30)) + [9]
-    G.add_nodes_from(nodes)
-    edges = [
-        (1, 4), (2, 4), (3, 4), (4, 1), (4, 2), (4, 3), (4, 6), (4, 5),
-        (5, 4), (6, 4), (4, 11), (11, 4), (11, 10), (11, 21), (11, 12),
-        (10, 11), (10, 20), (20, 10), (21, 11), (12, 11), (12, 22),
-        (22, 12), (12, 13), (13, 12), (13, 23), (23, 13), (13, 14),
-        (14, 13), (14, 24), (24, 14), (14, 15), (15, 14), (15, 25),
-        (25, 15), (15, 16), (16, 15), (16, 26), (26, 16), (16, 17),
-        (17, 16), (17, 27), (27, 17), (17, 18), (18, 17), (18, 28),
-        (28, 18), (18, 19), (19, 18), (19, 29), (29, 19), (9, 16),
-        (16, 9)
+G = nx.DiGraph()
+nodes = list(range(1, 30)) + [9]
+G.add_nodes_from(nodes)
+edges = [
+    (1, 4), (2, 4), (3, 4), (4, 1), (4, 2), (4, 3), (4, 6), (4, 5),
+    (5, 4), (6, 4), (4, 11), (11, 4), (11, 10), (11, 21), (11, 12),
+    (10, 11), (10, 20), (20, 10), (21, 11), (12, 11), (12, 22),
+    (22, 12), (12, 13), (13, 12), (13, 23), (23, 13), (13, 14),
+    (14, 13), (14, 24), (24, 14), (14, 15), (15, 14), (15, 25),
+    (25, 15), (15, 16), (16, 15), (16, 26), (26, 16), (16, 17),
+    (17, 16), (17, 27), (27, 17), (17, 18), (18, 17), (18, 28),
+    (28, 18), (18, 19), (19, 18), (19, 29), (29, 19), (9, 16),
+    (16, 9)
+]
+G.add_edges_from(edges)
+
+# Define AGVs and their tasks (multiple paths)
+agv_tasks = {
+    'AGV1': [
+        [1, 4, 11, 10, 20],
+        [20, 10, 11, 4, 5, 4, 6],
+        [6, 4, 11, 10, 20],
+        [20, 10, 11, 4, 1]
+    ],
+    'AGV2': [
+        [4, 11, 12, 13, 14, 24],
+        [24, 14, 13, 12, 11, 4, 5, 4, 6],
+        [6, 4, 11, 12, 13, 14, 24],
+        [24, 14, 13, 12, 11, 4, 2]
+    ],
+    'AGV3': [
+        [3, 4, 11, 12, 13, 14, 15, 16, 17, 18, 28],
+        [28, 18, 17, 16, 15, 14, 13, 12, 11, 4, 5, 4, 6],
+        [6, 4, 11, 12, 13, 14, 15, 16, 17, 18, 28],
+        [28, 18, 17, 16, 15, 14, 13, 12, 11, 4, 3]
+    ],
+    'GEN': [
+        [9, 16, 15, 25],
+        [25, 15, 16, 9]
     ]
-    G.add_edges_from(edges)
-    return G
+}
+
+# Initialize the reservation status of each node
+resource_states = {node: 0 for node in G.nodes()}
+
+# Set initial nodes as reserved
+for agv, tasks in agv_tasks.items():
+    if tasks and tasks[0]:  # Check if there are tasks and nodes in the first task
+        starting_node = tasks[0][0]
+        resource_states[starting_node] = agv
+
+def calculate_shared_nodes():
+    for agv, tasks in agv_tasks.items():
+        other_agvs = [other_agv for other_agv in agv_tasks if other_agv != agv]
+        shared_nodes_with_others = {other_agv: [] for other_agv in other_agvs}
+
+        for other_agv in other_agvs:
+            # Calculate shared nodes only for the current tasks
+            if tasks and agv_tasks[other_agv]:
+                current_task = tasks[0]
+                other_current_task = agv_tasks[other_agv][0]
+                shared_nodes = set(current_task) & set(other_current_task)
+                shared_nodes_with_others[other_agv] = list(shared_nodes)
+
+        print(f"Shared nodes for {agv} with others:")
+        for other_agv, shared_nodes in shared_nodes_with_others.items():
+            print(f"  With {other_agv}: {shared_nodes}")
+
+calculate_shared_nodes()
+
+# Function to check if an AGV can move to the next node
+def can_move(agv, shared_nodes_with_others, other_agvs, current_node, next_node):
+    if all(next_node not in shared_nodes_with_others[other_agv] for other_agv in other_agvs):
+        return True
+    elif not any(
+        next_node in shared_nodes and
+        any(resource_states[shared_node] == other_agv for shared_node in shared_nodes)
+        for other_agv, shared_nodes in shared_nodes_with_others.items()
+    ):
+        return True
+    return False
+def can_move2(agv, shared_nodes_with_others, other_agvs, current_node, next_node):
+    if all(next_node not in shared_nodes_with_others[other_agv] for other_agv in other_agvs):
+        return True
+    elif all(
+        next_node not in shared_nodes or
+        all(resource_states[shared_node] != other_agv for shared_node in shared_nodes)
+        for other_agv, shared_nodes in shared_nodes_with_others.items()
+    ):
+        return True
+    return False
+# Initialize plot
+fig, ax = plt.subplots()
+pos = nx.kamada_kawai_layout(G)
+x = []
+# Update function for animation
+def update(frame):
+    ax.clear()
+    nx.draw(G, pos, with_labels=True, arrows=True, ax=ax)
+    s = 0
+
+    # Draw AGVs at their current positions
+    for agv, tasks in agv_tasks.items():
+        if tasks and tasks[0]:  # Check if there are tasks and nodes left in the current task
+            current_node = tasks[0][0]
+            nx.draw_networkx_nodes(
+                G, pos, nodelist=[current_node],
+                node_color='r' if agv == 'AGV1' else 'g' if agv == 'AGV2' else 'b' if agv == 'AGV3' else 'orange',
+                node_size=500, ax=ax
+            )
+
+    # Skip movement on the first frame to show initial positions
+    if frame == 0:
+        return
+    global x
+    # Move each AGV if possible
+    for agv, tasks in agv_tasks.items():
+        w = 0
+        if tasks and len(tasks[0]) >= 1 and w == 0:  # Check if there are tasks and nodes left in the current task
+            other_agvs = [other_agv for other_agv in agv_tasks if other_agv != agv]
+            shared_nodes_with_others = {other_agv: [] for other_agv in other_agvs}
+
+            for other_agv in other_agvs:
+                # Calculate shared nodes only for the current tasks
+                if tasks and agv_tasks[other_agv]:
+                    if other_agv not in x or agv not in x:
+                        current_task = tasks[0]
+                        other_current_task = agv_tasks[other_agv][0]
+                        shared_nodes = set(current_task) & set(other_current_task)
+                        shared_nodes_with_others[other_agv] = list(shared_nodes)
+                        #print(x)
+                    if 5 in shared_nodes_with_others[other_agv] or other_agv in x and agv in x:
+                        if agv not in x or other_agv not in x:
+                            x.append(agv)
+                            x.append(other_agv)
 
 
-# Function to animate the agents' movements
-def animate_agents(agents_paths, G):
-    # Define positions for nodes in a circular layout
-    pos = {node: (np.cos(2 * np.pi * node / len(G.nodes)), np.sin(2 * np.pi * node / len(G.nodes))) for node in G.nodes}
+                        current_task = tasks[0]
+                        if len(agv_tasks[other_agv]) > 1:
+                            other_current_task = agv_tasks[other_agv][0] + agv_tasks[other_agv][1]
+                        else:
+                            other_current_task = agv_tasks[other_agv][0]
+                        shared_nodes = set(current_task) & set(other_current_task)
+                        shared_nodes_with_others[other_agv] = list(shared_nodes)
 
-    fig, ax = plt.subplots()
-    nx.draw(G, pos, ax=ax, with_labels=True, node_color='lightblue', node_size=500, font_size=10)
+                        if len(tasks[0]) == 1:
+                            x.remove(agv)
+                            x.remove(other_agv)
+                        #print("hihi")
+                        print(x)
+                        print(tasks[0])
+                        #print(shared_nodes_with_others[other_agv])
 
-    # Define unique colors for each agent
-    colors = ['red', 'blue', 'green', 'orange', 'purple', 'pink', 'yellow', 'cyan']  # Add more colors if needed
-    num_agents = len(agents_paths)
-    agent_scatters = [ax.scatter([], [], s=200, color=colors[i % len(colors)], label=f'Agent {i + 1}') for i in
-                      range(num_agents)]
+            current_node = tasks[0][0]
+            if len(tasks[0]) > 1:
+                next_node = tasks[0][1]
 
-    def update(frame):
-        # Clear the previous frame
-        ax.clear()
-        nx.draw(G, pos, ax=ax, with_labels=True, node_color='lightblue', node_size=500, font_size=10)
+            elif len(tasks[0]) == 1:  # If the current task is completed, move to the next task
+                #last_node = tasks[0][-1]  # Get the last node of the completed task
+                if len(tasks) > 1:
+                    next_node = tasks[1][0]
 
-        # Update the position of each agent
-        for i, path in enumerate(agents_paths):
-            if frame < len(path):  # Ensure the frame index is within the path length
-                node = path[frame]
-                agent_scatters[i] = ax.scatter(pos[node][0], pos[node][1], s=200, color=colors[i % len(colors)],
-                                               label=f'Agent {i + 1}')
+                    """if tasks:  # If there are more tasks
+                        tasks[0].insert(0, last_node)  # Insert the last node of the previous task as the starting node"""
+            #print(tasks)
+            print(current_task)
+            #print(next_node)
+            print(current_node)
+            print(other_current_task)
+            print(shared_nodes_with_others)
+            print(resource_states)
+            if len(tasks) == 1 and len(tasks[0]) == 1:
+                w = 1
+            else:
+                if can_move(agv, shared_nodes_with_others, other_agvs, current_node, next_node):
+                    # Reserve the next node for the AGV
+                    resource_states[current_node] = 0
 
-        # Add a legend to show agent labels
-        ax.legend()
+                    resource_states[next_node] = agv
 
-    # Create the animation
-    ani = animation.FuncAnimation(fig, update, frames=max(len(path) for path in agents_paths), blit=False, repeat=False)
-    plt.show()
-
-
-# Example of running the agents in the graph environment
-def train_agents(num_agents, num_episodes, state_size, action_size):
-    agents = [Agent(state_size, action_size) for _ in range(num_agents)]
-    G = create_graph()
-    agents_paths = [[] for _ in range(num_agents)]
-
-    for episode in range(num_episodes):
-        print(f"Episode {episode + 1}/{num_episodes}")  # Output progress
-        for agent_index, agent in enumerate(agents):
-            state = random.choice(list(G.nodes))  # Start from a random node
-            log_probs = []
-            rewards = []
-            visited_nodes = set()  # Track visited nodes
-            done = False
-            steps = 0
-            max_steps = 3  # Limit the number of steps per episode
-
-            while not done and steps < max_steps:
-                steps += 1
-                # Get the current state representation (e.g., current node)
-                state_vector = np.zeros(state_size)
-                state_vector[state - 1] = 1  # One-hot encoding of the current state
-
-                action, log_prob = agent.select_action(state_vector)
-                next_state = random.choice(list(G.successors(state))) if list(
-                    G.successors(state)) else state  # Move to a successor or stay
-
-                # Reward function
-                reward = -1 if next_state == state else 1  # Penalize staying in the same place
-                if next_state in visited_nodes:
-                    reward -= 0.5  # Penalize revisiting nodes
+                    tasks[0].pop(0)
+                    if len(tasks[0]) == 0:
+                        # Release the current node
+                        if len(tasks) > 1:
+                            tasks.pop(0)  # Remove the completed task
+                            if s == 1:
+                                s = 0
+                    # Move AGV to next node
+                    # tasks[0].pop(0)  # Remove the current node from the current task
+                    print(f"{agv} moves from {current_node} to {next_node}")
                 else:
-                    reward += 1  # Reward exploring new nodes
-                visited_nodes.add(next_state)
-
-                log_probs.append(log_prob)
-                rewards.append(reward)
-                agents_paths[agent_index].append(next_state)  # Store the path
-                state = next_state
-
-                # Check if the goal is reached
-                done = (next_state == 29)  # Example condition to end the episode (reaching node 29)
-
-            if steps >= max_steps:
-                print(f"Agent {agent_index + 1} terminated episode due to step limit.")
-
-            agent.update_policy(rewards, log_probs)
-            print(
-                f"  Agent {agent_index + 1} finished episode with path: {agents_paths[agent_index]}")  # Output agent progress
-
-    return agents_paths, G
+                    print(f"{agv} waiting at {current_node}")
 
 
-# Parameters
-num_agents = 3
-num_episodes = 1000
-state_size = 30  # Number of nodes in the graph
-action_size = 30  # Number of possible actions (one for each node)
+# Create animation
+ani = animation.FuncAnimation(fig, update, frames=range(100), repeat=False, interval=1000)
 
-# Train the agents and get their paths
-agents_paths, G = train_agents(num_agents, num_episodes, state_size, action_size)
-print(agents_paths)
-# Animate the agents' movements
-animate_agents(agents_paths, G)
+plt.show()
