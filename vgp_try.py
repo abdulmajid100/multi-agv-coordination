@@ -90,7 +90,7 @@ def train_agents(num_agents, num_episodes, state_size, action_size):
         print(f"Episode {episode + 1}/{num_episodes}")  # Output progress
         done = False
         steps = 0
-        max_steps = 20  # Limit the number of steps per episode
+        max_steps = 200  # Limit the number of steps per episode
         agents_paths = [[] for _ in range(num_agents)]
         excluded_nodes = {7, 8}
         available_nodes = [node for node in G.nodes]
@@ -119,12 +119,13 @@ def train_agents(num_agents, num_episodes, state_size, action_size):
                     G.successors(state[agent_index])) else state[agent_index]  # Move to a successor or stay
 
                 # Reward function
-                reward = 0 if next_state[agent_index] == state[agent_index] else 1  # Penalize staying in the same place
+                reward = 0
+                #reward = 0 if next_state[agent_index] == state[agent_index] else 1  # Penalize staying in the same place
                 if next_state[agent_index] in visited_nodes:
-                    reward -= 10  # Penalize revisiting nodes
+                    reward -= 100  # Penalize revisiting nodes
                     done = True
                 else:
-                    reward += 1  # Reward exploring new nodes
+                    reward += 10  # Reward exploring new nodes
                     visited_nodes.append(next_state[agent_index])
                     visited_nodes = (visited_nodes)[-2:]
                     log_probs.append(log_prob)
@@ -196,6 +197,6 @@ def update(frame):
 
 
 # Create the animation
-ani = animation.FuncAnimation(fig, update, frames=max(len(path) for path in agents_paths), blit=False, repeat=False, interval=2000)
+ani = animation.FuncAnimation(fig, update, frames=max(len(path) for path in agents_paths), blit=False, repeat=False, interval=1000)
 plt.show()
 
