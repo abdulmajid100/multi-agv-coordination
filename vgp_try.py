@@ -137,8 +137,8 @@ def train_agents(num_agents, num_episodes, state_size, action_size):
                 # Check if the goal is reached
                 # done = (next_state == 29)  # Example condition to end the episode (reaching node 29)
 
-            if steps >= max_steps:
-                print(f"Agent {agent_index + 1} terminated episode due to step limit.")
+            #if steps >= max_steps:
+                #print(f"Agent {agent_index + 1} terminated episode due to step limit.")
                 if not done:
                     agent.update_policy(rewards, log_probs)
             print(
