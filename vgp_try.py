@@ -97,13 +97,14 @@ def train_agents(num_agents, num_episodes, state_size, action_size):
         print(f"Available nodes: {available_nodes}")
         # Randomly sample 3 nodes from the available nodes
         state = random.sample(available_nodes, 3)
+
+        visited_nodes = []
+        # Start from a random node
+        log_probs = []
+        rewards = []
+        next_state = [None] * num_agents
         while not done and steps < max_steps:
 
-            visited_nodes = []
-              # Start from a random node
-            log_probs = []
-            rewards = []
-            next_state = [None] * num_agents
             # Track visited nodes
 
             steps += 1
@@ -138,8 +139,8 @@ def train_agents(num_agents, num_episodes, state_size, action_size):
 
             if steps >= max_steps:
                 print(f"Agent {agent_index + 1} terminated episode due to step limit.")
-            if not done:
-                agent.update_policy(rewards, log_probs)
+                if not done:
+                    agent.update_policy(rewards, log_probs)
             print(
                 f"  Agent {agent_index + 1} finished episode with path: {agents_paths[agent_index]}")  # Output agent progress
             print(visited_nodes)
