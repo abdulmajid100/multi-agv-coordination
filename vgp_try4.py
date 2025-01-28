@@ -1,0 +1,200 @@
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+import networkx as nx
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+import random
+
+
+# Define the Policy Network
+class PolicyNetwork(nn.Module):
+    def __init__(self, state_size, action_size):
+        super(PolicyNetwork, self).__init__()
+        self.fc1 = nn.Linear(state_size, 128)
+        self.fc2 = nn.Linear(128, action_size)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        return F.softmax(self.fc2(x), dim=-1)
+
+
+# Define the Value Network
+class ValueNetwork(nn.Module):
+    def __init__(self, state_size):
+        super(ValueNetwork, self).__init__()
+        self.fc1 = nn.Linear(state_size, 128)
+        self.fc2 = nn.Linear(128, 1)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        return self.fc2(x)
+
+
+# Define the Agent
+class Agent:
+    def __init__(self, state_size, action_size):
+        self.policy_net = PolicyNetwork(state_size, action_size)
+        self.value_net = ValueNetwork(state_size)
+        self.policy_optimizer = optim.Adam(self.policy_net.parameters(), lr=0.01)
+        self.value_optimizer = optim.Adam(self.value_net.parameters(), lr=0.01)
+        self.gamma = 0.99  # Discount factor
+
+    def select_action(self, state):
+        state = torch.FloatTensor(state)
+        probabilities = self.policy_net(state)
+        action = np.random.choice(len(probabilities), p=probabilities.detach().numpy())
+        return action, torch.log(probabilities[action])
+
+    def update_policy(self, rewards, log_probs, states):
+        # Compute discounted rewards
+        discounted_rewards = []
+        for t in range(len(rewards)):
+            G = sum(self.gamma ** i * rewards[i + t] for i in range(len(rewards) - t))
+            discounted_rewards.append(G)
+        discounted_rewards = torch.FloatTensor(discounted_rewards)
+
+        # Compute value estimates for each state
+        states = torch.FloatTensor(np.array(states))
+        values = self.value_net(states).squeeze()
+
+        # Compute the advantage
+        advantages = discounted_rewards - values.detach()
+
+        # Update the policy network
+        policy_loss = -torch.sum(torch.stack(log_probs) * advantages)
+        self.policy_optimizer.zero_grad()
+        policy_loss.backward()
+        self.policy_optimizer.step()
+
+        # Update the value network
+        value_loss = F.mse_loss(values, discounted_rewards)
+        self.value_optimizer.zero_grad()
+        value_loss.backward()
+        self.value_optimizer.step()
+
+
+# Create a directed graph environment
+def create_graph():
+    G = nx.DiGraph()
+    nodes = list(range(1, 30))
+    G.add_nodes_from(nodes)
+    edges = [
+        (1, 4), (2, 4), (3, 4), (4, 1), (4, 2), (4, 3), (4, 6), (4, 5),
+        (5, 4), (6, 4), (4, 11), (11, 4), (11, 10), (11, 21), (11, 12),
+        (10, 11), (10, 20), (20, 10), (21, 11), (12, 11), (12, 22),
+        (22, 12), (12, 13), (13, 12), (13, 23), (23, 13), (13, 14),
+        (14, 13), (14, 24), (24, 14), (14, 15), (15, 14), (15, 25),
+        (25, 15), (15, 16), (16, 15), (16, 26), (26, 16), (16, 17),
+        (17, 16), (17, 27), (27, 17), (17, 18), (18, 17), (18, 28),
+        (28, 18), (18, 19), (19, 18), (19, 29), (29, 19)
+    ]
+    G.add_edges_from(edges)
+    G.remove_nodes_from([7, 8])  # Remove specific nodes
+    return G
+
+
+# Train agents in the graph environment
+def train_agents(num_agents, num_episodes, state_size, action_size):
+    agents = [Agent(state_size, action_size) for _ in range(num_agents)]
+    G = create_graph()
+
+    agents_paths = [[] for _ in range(num_agents)]
+
+    for episode in range(num_episodes):
+        print(f"Episode {episode + 1}/{num_episodes}")
+        state = np.zeros(state_size)  # Initialize the state vector
+        agent_positions = random.sample(list(G.nodes), num_agents)  # Random initial positions for agents
+        for i, pos in enumerate(agent_positions):
+            state[pos - 1] = i + 1  # Mark the agent's position in the state vector
+
+        log_probs = [[] for _ in range(num_agents)]
+        rewards = [[] for _ in range(num_agents)]
+        states = [[] for _ in range(num_agents)]
+        previous_positions = [-1] * num_agents  # Track the previous position of each agent
+
+        for step in range(200):  # Limit the number of steps per episode
+            for agent_index, agent in enumerate(agents):
+                # Select action and move to the next state
+                current_position = agent_positions[agent_index]
+                neighbors = list(G.successors(current_position))
+                if previous_positions[agent_index] in neighbors:
+                    neighbors.remove(previous_positions[agent_index])  # Avoid going back to the previous node
+                if not neighbors:  # If no valid neighbors, stay in the same node
+                    next_position = current_position
+                else:
+                    next_position = random.choice(neighbors)
+
+                # Update the state vector
+                state[current_position - 1] = 0  # Clear the agent's current position
+                state[next_position - 1] = agent_index + 1  # Mark the agent's new position
+
+                # Reward function
+                reward = 10 if state[next_position - 1] == 0 else -100
+
+                # Store log probabilities, rewards, and states
+                state_vector = state.copy()
+                action, log_prob = agent.select_action(state_vector)
+                log_probs[agent_index].append(log_prob)
+                rewards[agent_index].append(reward)
+                states[agent_index].append(state_vector)
+
+                # Update agent's position
+                previous_positions[agent_index] = current_position
+                agent_positions[agent_index] = next_position
+
+        # Update policies for all agents
+        for agent_index, agent in enumerate(agents):
+            agent.update_policy(rewards[agent_index], log_probs[agent_index], states[agent_index])
+
+    return agents_paths, G
+
+
+# Visualize the agents' movements
+def visualize_agents(agents_paths, G):
+    pos = nx.kamada_kawai_layout(G)
+    fig, ax = plt.subplots()
+    nx.draw(G, pos, ax=ax, with_labels=True, node_color='lightblue', node_size=500, font_size=10)
+
+    colors = ['red', 'blue', 'green', 'orange', 'purple', 'pink', 'yellow', 'cyan']
+    agent_positions = [None] * len(agents_paths)
+
+    def update(frame):
+        ax.clear()
+        nx.draw(G, pos, ax=ax, with_labels=True, node_color='lightblue', node_size=500, font_size=10)
+
+        for i, path in enumerate(agents_paths):
+            if frame < len(path):
+                agent_positions[i] = path[frame]
+
+        for i, node in enumerate(agent_positions):
+            if node is not None:
+                nx.draw_networkx_nodes(
+                    G,
+                    pos,
+                    nodelist=[node],
+                    node_color=colors[i % len(colors)],
+                    node_size=300,
+                    ax=ax,
+                    label=f'Agent {i + 1}'
+                )
+
+        ax.legend()
+
+    ani = animation.FuncAnimation(fig, update, frames=max(len(path) for path in agents_paths), repeat=False, interval=1000)
+    plt.show()
+
+
+# Parameters
+num_agents = 3
+num_episodes = 100
+state_size = 30  # Number of nodes in the graph
+action_size = 30  # Number of possible actions (one for each node)
+
+# Train the agents
+agents_paths, G = train_agents(num_agents, num_episodes, state_size, action_size)
+
+# Visualize the agents' movements
+visualize_agents(agents_paths, G)

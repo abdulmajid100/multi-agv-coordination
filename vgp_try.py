@@ -85,7 +85,6 @@ def train_agents(num_agents, num_episodes, state_size, action_size):
     agents = [Agent(state_size, action_size) for _ in range(num_agents)]
     G = create_graph()
 
-
     for episode in range(num_episodes):
         print(f"Episode {episode + 1}/{num_episodes}")  # Output progress
         done = False
@@ -100,51 +99,52 @@ def train_agents(num_agents, num_episodes, state_size, action_size):
 
         visited_nodes = []
         # Start from a random node
-        log_probs = []
-        rewards = []
+        log_probs = [[] for _ in range(num_agents)]  # Separate log_probs for each agent
+        rewards = [[] for _ in range(num_agents)]  # Separate rewards for each agent
         next_state = [None] * num_agents
+
         while not done and steps < max_steps:
-
-            # Track visited nodes
-
             steps += 1
             for agent_index, agent in enumerate(agents):
-
                 # Get the current state representation (e.g., current node)
                 state_vector = np.zeros(state_size)
                 state_vector[state[agent_index] - 1] = 1  # One-hot encoding of the current state
 
                 action, log_prob = agent.select_action(state_vector)
-                print(action)
+                #print(action)
                 next_state[agent_index] = random.choice(list(G.successors(state[agent_index]))) if list(
                     G.successors(state[agent_index])) else state[agent_index]  # Move to a successor or stay
 
                 # Reward function
                 reward = 0
-                #reward = 0 if next_state[agent_index] == state[agent_index] else 1  # Penalize staying in the same place
                 if next_state[agent_index] in visited_nodes:
                     reward -= 100  # Penalize revisiting nodes
                     done = True
                 else:
                     reward += 10  # Reward exploring new nodes
                     visited_nodes.append(next_state[agent_index])
-                    visited_nodes = (visited_nodes)[-2:]
-                    log_probs.append(log_prob)
-                    rewards.append(reward)
-                    agents_paths[agent_index].append(next_state[agent_index])  # Store the path
-                    state[agent_index] = next_state[agent_index]
+                    visited_nodes = visited_nodes[-2:]  # Keep only the last two visited nodes
 
-                # Check if the goal is reached
-                # done = (next_state == 29)  # Example condition to end the episode (reaching node 29)
+                # Store log_probs and rewards for the agent
+                log_probs[agent_index].append(log_prob)
+                rewards[agent_index].append(reward)
 
-            #if steps >= max_steps:
-                #print(f"Agent {agent_index + 1} terminated episode due to step limit.")
-                if not done:
-                    agent.update_policy(rewards, log_probs)
-            print(
-                f"  Agent {agent_index + 1} finished episode with path: {agents_paths[agent_index]}")  # Output agent progress
-            print(visited_nodes)
-        return agents_paths, G
+                # Update the agent's path
+                agents_paths[agent_index].append(next_state[agent_index])
+                state[agent_index] = next_state[agent_index]
+
+            # Check if the step limit is reached
+            if steps >= max_steps:
+                print(f"Agent {agent_index + 1} terminated episode due to step limit.")
+
+        # Update policies for all agents after the episode
+        for agent_index, agent in enumerate(agents):
+            agent.update_policy(rewards[agent_index], log_probs[agent_index])
+
+        print(f"  Agent {agent_index + 1} finished episode with path: {agents_paths[agent_index]}")  # Output agent progress
+        #print(visited_nodes)
+
+    return agents_paths, G
 
 
 # Parameters
