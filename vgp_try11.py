@@ -49,27 +49,22 @@ class Agent:
         return action, torch.log(probabilities[action])
 
     def update_policy(self, rewards, log_probs, states):
-        # Compute discounted rewards
         discounted_rewards = []
         for t in range(len(rewards)):
             G = sum(self.gamma ** i * rewards[i + t] for i in range(len(rewards) - t))
             discounted_rewards.append(G)
         discounted_rewards = torch.FloatTensor(discounted_rewards)
 
-        # Compute value estimates for each state
         states = torch.FloatTensor(np.array(states))
         values = self.value_net(states).squeeze()
 
-        # Compute the advantage
         advantages = discounted_rewards - values.detach()
 
-        # Update the policy network
         policy_loss = -torch.sum(torch.stack(log_probs) * advantages)
         self.policy_optimizer.zero_grad()
         policy_loss.backward()
         self.policy_optimizer.step()
 
-        # Update the value network
         value_loss = F.mse_loss(values, discounted_rewards)
         self.value_optimizer.zero_grad()
         value_loss.backward()
@@ -105,36 +100,48 @@ def train_agents(num_agents, num_episodes, state_size, action_size):
 
     for episode in range(num_episodes):
         print(f"Episode {episode + 1}/{num_episodes}")
-        state = random.sample(list(G.nodes), num_agents)  # Random initial states for agents
-        print(state)
+
+        # Generate random nodes for each agent
+        states = [random.sample(list(G.nodes), random.randint(3, 5)) for _ in range(num_agents)]
         visited_nodes = set()
         log_probs = [[] for _ in range(num_agents)]
         rewards = [[] for _ in range(num_agents)]
-        states = [[] for _ in range(num_agents)]
+        actions = [[] for _ in range(num_agents)]
 
         for step in range(200):  # Limit the number of steps per episode
             for agent_index, agent in enumerate(agents):
                 # One-hot encode the current state
                 state_vector = np.zeros(state_size)
-                state_vector[state[agent_index] - 1] = 1
+                for node in states[agent_index]:
+                    state_vector[node - 1] = 1  # Mark the selected nodes in the state vector
 
-                # Select action and move to the next state
+                # Select action: 0 for stop, 1 for move
                 action, log_prob = agent.select_action(state_vector)
-                next_state = random.choice(list(G.successors(state[agent_index]))) if list(
-                    G.successors(state[agent_index])) else state[agent_index]
+                actions[agent_index].append(action)
 
-                # Reward function
-                reward = 10 if next_state not in visited_nodes else -100
-                visited_nodes.add(next_state)
+                if action == 1:  # Move
+                    current_node = states[agent_index][0]  # Get the current node
+                    next_node = random.choice(list(G.successors(current_node))) if list(G.successors(current_node)) else current_node
+
+                    # Check for collision or deadlock
+                    if next_node in visited_nodes:
+                        reward = -10  # Penalty for collision
+                    else:
+                        reward = 0  # No penalty for moving to a new node
+                        visited_nodes.add(next_node)
+
+                    # Update the state to the new node
+                    states[agent_index] = [next_node] + states[agent_index][1:]  # Move to the next node
+                else:  # Stop
+                    reward = 0  # No reward for stopping
+
+                # Check if the agent reached the last node
+                if states[agent_index][0] == states[agent_index][-1]:
+                    reward += 10  # Reward for reaching the last node
 
                 # Store log probabilities, rewards, and states
                 log_probs[agent_index].append(log_prob)
                 rewards[agent_index].append(reward)
-                states[agent_index].append(state_vector)
-
-                # Update agent's path and state
-                agents_paths[agent_index].append(next_state)
-                state[agent_index] = next_state
 
         # Update policies for all agents
         for agent_index, agent in enumerate(agents):
