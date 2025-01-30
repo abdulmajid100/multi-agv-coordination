@@ -145,7 +145,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                     current_pos = agv_paths[agent_index][0]
                     next_pos = agv_paths[agent_index][1] if len(agv_paths[agent_index]) > 1 else current_pos
 
-                    reward = 10 if next_pos not in visited_nodes else -1000
+                    reward = 10 if next_pos not in visited_nodes else -10
                     visited_nodes.add(next_pos)
 
                     agv_paths[agent_index] = agv_paths[agent_index][1:] if len(agv_paths[agent_index]) > 1 else []
