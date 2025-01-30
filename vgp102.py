@@ -33,46 +33,7 @@ class ValueNetwork(nn.Module):
         return self.fc2(x)
 
 # Define the Agent
-class Agent:
-    def __init__(self, state_size, action_size):
-        self.policy_net = PolicyNetwork(state_size, action_size)
-        self.value_net = ValueNetwork(state_size)
-        self.policy_optimizer = optim.Adam(self.policy_net.parameters(), lr=0.01)
-        self.value_optimizer = optim.Adam(self.value_net.parameters(), lr=0.01)
-        self.gamma = 0.99  # Discount factor
 
-    def select_action(self, state):
-        state = torch.FloatTensor(state)
-        probabilities = self.policy_net(state)
-        action = np.random.choice(len(probabilities), p=probabilities.detach().numpy())
-        return action, torch.log(probabilities[action])
-
-    def update_policy(self, rewards, log_probs, states):
-        # Compute discounted rewards
-        discounted_rewards = []
-        for t in range(len(rewards)):
-            G = sum(self.gamma ** i * rewards[i + t] for i in range(len(rewards) - t))
-            discounted_rewards.append(G)
-        discounted_rewards = torch.FloatTensor(discounted_rewards)
-
-        # Compute value estimates for each state
-        states = torch.FloatTensor(np.array(states))
-        values = self.value_net(states).squeeze()
-
-        # Compute the advantage
-        advantages = discounted_rewards - values.detach()
-
-        # Update the policy network
-        policy_loss = -torch.sum(torch.stack(log_probs) * advantages)
-        self.policy_optimizer.zero_grad()
-        policy_loss.backward()
-        self.policy_optimizer.step()
-
-        # Update the value network
-        value_loss = F.mse_loss(values, discounted_rewards)
-        self.value_optimizer.zero_grad()
-        value_loss.backward()
-        self.value_optimizer.step()
 
 # Create a directed graph environment
 def create_graph():
