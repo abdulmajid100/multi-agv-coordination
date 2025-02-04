@@ -127,7 +127,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
             start_index = random.randint(0, len(path) - 1)
             agv_paths.append(path[start_index:])
 
-        visited_nodes = set()
+        visited_nodes = []
         log_probs = []
         rewards = []
         states = []
@@ -138,8 +138,8 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                 for node in path:
                     state_matrix[agent_index, node - 1] += 1
         state_matrix = torch.flatten(torch.from_numpy(state_matrix))
-
-        for step in range(200):
+        f = False
+        for step in range(500):
             action_vector, step_log_prob = select_actions(policy_net, state_matrix)
 
             for agent_index, action in enumerate(action_vector):
@@ -147,13 +147,22 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                     current_pos = agv_paths[agent_index][0]
                     next_pos = agv_paths[agent_index][1] if len(agv_paths[agent_index]) > 1 else current_pos
 
-                    reward = 10 if next_pos not in visited_nodes else -10
-                    visited_nodes.add(next_pos)
+                    #reward = 100 if next_pos not in visited_nodes else -10000
+                    if next_pos not in visited_nodes:
+                        reward = 10
 
+                    else:
+                        reward = -100000
+                        f = True
+                        break
+                    visited_nodes.append(next_pos)
+                    print(len(visited_nodes))
+                    visited_nodes = visited_nodes[-2:]
+                    print(len(visited_nodes))
                     agv_paths[agent_index] = agv_paths[agent_index][1:] if len(agv_paths[agent_index]) > 1 else []
                 else:
                     current_pos = agv_paths[agent_index][0] if agv_paths[agent_index] else None
-                    reward = 0
+                    reward = -10
 
                 log_probs.append(step_log_prob)
                 rewards.append(reward)
@@ -161,7 +170,9 @@ def train_agents(num_agents, num_episodes, fixed_paths):
 
                 if current_pos is not None:
                     agents_paths[agent_index].append(current_pos)
-
+            if f:
+                break
+        #print(len(agents_paths))
         update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewards, log_probs, states, gamma)
         print(f"Episode {episode + 1}: Total Reward = {sum(rewards)}")
         discounted_rewards = []
@@ -195,6 +206,7 @@ def test_policy(policy_net, num_agents, fixed_paths, num_test_episodes=5):
         print(f"Test Episode {episode + 1}/{num_test_episodes}")
 
         agv_paths = [path.copy() for path in fixed_paths]
+        #print(agv_paths)
         episode_paths = [[] for _ in range(num_agents)]
 
         state_matrix = np.zeros((num_agents, 30))
@@ -209,13 +221,18 @@ def test_policy(policy_net, num_agents, fixed_paths, num_test_episodes=5):
             action_vector, _ = select_actions(policy_net, state_matrix)
 
             for agent_index, action in enumerate(action_vector):
-                if action == 1 and agv_paths[agent_index]:
+                #print(agent_index)
+                if agv_paths[agent_index]:
                     current_pos = agv_paths[agent_index][0]
+
+                    if action == 1 and agv_paths[agent_index]:
+                        agv_paths[agent_index] = agv_paths[agent_index][1:] if len(agv_paths[agent_index]) > 1 else []
+                        if agv_paths[agent_index]:
+                            current_pos = agv_paths[agent_index][0]
                     episode_paths[agent_index].append(current_pos)
-                    agv_paths[agent_index] = agv_paths[agent_index][1:] if len(agv_paths[agent_index]) > 1 else []
-
         test_paths.append(episode_paths)
-
+    print(agv_paths)
+    print((test_paths))
     return test_paths
 
 
@@ -258,7 +275,7 @@ def visualize_agents(agents_paths, G):
 if __name__ == "__main__":
     # Training parameters
     num_agents = 3
-    num_episodes = 20
+    num_episodes = 5000
 
     # Train the agents
     agents_paths, G, trained_policy = train_agents(num_agents, num_episodes, fixed_paths)
@@ -272,4 +289,4 @@ if __name__ == "__main__":
 
     # Visualize test results
     print("Visualizing test results...")
-    visualize_agents(test_results[0], G)  # Visualize first test episode
+    visualize_agents(test_results[4], G)  # Visualize first test episode
