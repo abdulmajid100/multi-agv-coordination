@@ -47,7 +47,8 @@ def create_graph():
         (14, 13), (14, 24), (24, 14), (14, 15), (15, 14), (15, 25),
         (25, 15), (15, 16), (16, 15), (16, 26), (26, 16), (16, 17),
         (17, 16), (17, 27), (27, 17), (17, 18), (18, 17), (18, 28),
-        (28, 18), (18, 19), (19, 18), (19, 29), (29, 19)
+        (28, 18), (18, 19), (19, 18), (19, 29), (29, 19), (9, 16),
+    (16, 9)
     ]
     G.add_edges_from(edges)
     G.remove_nodes_from([7, 8])
@@ -103,6 +104,7 @@ def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewa
     value_optimizer.zero_grad()
     value_loss.backward()
     value_optimizer.step()
+    print(f"Policy Loss: {policy_loss.item()}, Value Loss: {value_loss.item()}")
 
 
 def train_agents(num_agents, num_episodes, fixed_paths):
@@ -161,7 +163,27 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                     agents_paths[agent_index].append(current_pos)
 
         update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewards, log_probs, states, gamma)
+        print(f"Episode {episode + 1}: Total Reward = {sum(rewards)}")
+        discounted_rewards = []
+        for t in range(len(rewards)):
+            G1 = sum(gamma ** i * rewards[i + t] for i in range(len(rewards) - t))
+            discounted_rewards.append(G1)
+        average_discounted_reward = np.mean(discounted_rewards)
+        print(f"Episode {episode + 1}: Average Discounted Reward = {average_discounted_reward}")
+        import matplotlib.pyplot as plt
 
+        # Store rewards for plotting
+        if 'reward_history' not in locals():
+            reward_history = []
+        reward_history.append(sum(rewards))
+
+        # Plot rewards
+        if episode == num_episodes - 1:  # After the last episode
+            plt.plot(reward_history)
+            plt.xlabel('Episode')
+            plt.ylabel('Total Reward')
+            plt.title('Training Rewards Over Time')
+            plt.show()
     return agents_paths, G, policy_net
 
 
@@ -201,7 +223,7 @@ def visualize_agents(agents_paths, G):
     pos = nx.kamada_kawai_layout(G)
     fig, ax = plt.subplots()
     nx.draw(G, pos, ax=ax, with_labels=True, node_color='lightblue', node_size=500, font_size=10)
-
+    #plt.show()
     colors = ['red', 'blue', 'green', 'orange', 'purple', 'pink', 'yellow', 'cyan']
     agent_positions = [None] * len(agents_paths)
 
@@ -236,7 +258,7 @@ def visualize_agents(agents_paths, G):
 if __name__ == "__main__":
     # Training parameters
     num_agents = 3
-    num_episodes = 100
+    num_episodes = 20
 
     # Train the agents
     agents_paths, G, trained_policy = train_agents(num_agents, num_episodes, fixed_paths)
