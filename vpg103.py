@@ -149,20 +149,20 @@ def train_agents(num_agents, num_episodes, fixed_paths):
 
                     #reward = 100 if next_pos not in visited_nodes else -10000
                     if next_pos not in visited_nodes:
-                        reward = 10
+                        reward = 100
 
                     else:
-                        reward = -100000
+                        reward = -100
                         f = True
                         break
                     visited_nodes.append(next_pos)
-                    print(len(visited_nodes))
+                    #print(len(visited_nodes))
                     visited_nodes = visited_nodes[-2:]
-                    print(len(visited_nodes))
+                    #print(len(visited_nodes))
                     agv_paths[agent_index] = agv_paths[agent_index][1:] if len(agv_paths[agent_index]) > 1 else []
                 else:
                     current_pos = agv_paths[agent_index][0] if agv_paths[agent_index] else None
-                    reward = -10
+                    reward = -1
 
                 log_probs.append(step_log_prob)
                 rewards.append(reward)
@@ -217,7 +217,7 @@ def test_policy(policy_net, num_agents, fixed_paths, num_test_episodes=5):
 
         state_matrix = torch.flatten(torch.from_numpy(state_matrix))
 
-        for step in range(200):
+        for step in range(500):
             action_vector, _ = select_actions(policy_net, state_matrix)
 
             for agent_index, action in enumerate(action_vector):
@@ -275,7 +275,7 @@ def visualize_agents(agents_paths, G):
 if __name__ == "__main__":
     # Training parameters
     num_agents = 3
-    num_episodes = 5000
+    num_episodes = 500
 
     # Train the agents
     agents_paths, G, trained_policy = train_agents(num_agents, num_episodes, fixed_paths)
