@@ -136,8 +136,8 @@ def train_agents(num_agents, num_episodes, fixed_paths):
     policy_net = PolicyNetwork(state_size, action_size)
     value_net = ValueNetwork(state_size)
     # Lowered learning rates for stability
-    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.005)
-    value_optimizer = optim.Adam(value_net.parameters(), lr=0.005)
+    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.05)
+    value_optimizer = optim.Adam(value_net.parameters(), lr=0.05)
     gamma = 0.99
 
     agents_paths = [[] for _ in range(num_agents)]
@@ -186,30 +186,36 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                                 else current_pos)
                     for i in range(len(visited_nodes)):
                         if i != agent_index and next_pos == visited_nodes[i]:
-                            reward = -10000  # Penalty for causing a deadlock
+                            reward = -1000  # Penalty for causing a deadlock
                             done = True
                             break  # Exit the loop if the condition is met
                     if not done:
-                        reward = 100  # Reward for moving to the next node
+                        reward = 1000  # Reward for moving to the next node
+                        visited_nodes[agent_index] = next_pos
+                        # print(visited_nodes, "visited_nodes")
+                        # Move agent forward
+                        if len(agv_paths[agent_index]) > 1:
+                            agv_paths[agent_index] = agv_paths[agent_index][1:]
+                            # print(agv_paths[agent_index])
+                        else:
+                            agv_paths[agent_index] = []
+                            # reward = 1000  # Reward for reaching the goal
+                        # print(agv_paths)
                     #print(visited_nodes, "visited_nodes")
-                    visited_nodes[agent_index] = next_pos
-                    #print(visited_nodes, "visited_nodes")
-                    # Move agent forward
-                    if len(agv_paths[agent_index]) > 1:
-                        agv_paths[agent_index] = agv_paths[agent_index][1:]
-                        #print(agv_paths[agent_index])
-                    else:
-                        agv_paths[agent_index] = []
-                        reward = 1000  # Reward for reaching the goal
+
+                elif not agv_paths[agent_index]:
+                    reward = 1000
+                    if not agv_paths:
                     #print(agv_paths)
-                elif not agv_paths:
-                    #print(agv_paths)
-                    reward = 30000  # Reward for reaching the goal
+                        reward = 30000  # Reward for reaching the goal
+                        done = True
+                elif action == 0 and not done:
+                    reward = -300
                 else:
-                    reward = -100  # Default reward if no action taken
+                    reward = 0  # Default reward if no action taken
                     #print(agv_paths[agent_index])
 
-
+                reward = reward - 1
                 log_probs.append(step_log_prob)
                 rewards.append(reward)
                 states.append(state_matrix.clone())
@@ -326,7 +332,7 @@ def visualize_agents(agents_paths, G):
 # Main execution
 if __name__ == "__main__":
     num_agents = 3
-    num_episodes = 500
+    num_episodes = 300
 
     # Train the agents
     agents_paths, G, trained_policy = train_agents(num_agents, num_episodes, fixed_paths)
