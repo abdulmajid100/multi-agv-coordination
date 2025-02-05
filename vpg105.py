@@ -11,17 +11,15 @@ import random
 
 # Define the Policy Network
 class PolicyNetwork(nn.Module):
-    def __init__(self, state_size, num_agents, hidden_size=128):
+    def __init__(self, state_size, num_agents):
         super(PolicyNetwork, self).__init__()
-        self.fc1 = nn.Linear(state_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.fc3 = nn.Linear(hidden_size, num_agents)
+        self.fc1 = nn.Linear(state_size, 128)
+        self.fc2 = nn.Linear(128, num_agents)
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return F.log_softmax(x, dim=-1)
+        x = self.fc2(x)
+        return F.softmax(x, dim=-1)
 
 
 # Define the Value Network
@@ -61,20 +59,23 @@ def create_graph():
 fixed_paths = [
     [1, 4, 11, 12, 22],  # Path for AGV 1
     [2, 4, 11, 12, 13, 14, 15, 25],  # Path for AGV 2
-    [29, 19, 18, 17]
-    #[3, 4, 11, 12, 13, 14, 15, 16, 26]  # Path for AGV 3
+    [3, 4, 11, 12, 13, 14, 15, 16, 26]  # Path for AGV 3
 ]
 
 
 def select_actions(policy_net, state_matrix):
-    state_matrix = state_matrix.float()
+    if isinstance(state_matrix, np.ndarray):
+        state = torch.FloatTensor(state_matrix.astype(np.float32)).unsqueeze(0)
+    elif isinstance(state_matrix, torch.Tensor):
+        state = state_matrix.float().unsqueeze(0)
+    else:
+        raise TypeError("state_matrix must be either a NumPy array or a PyTorch tensor")
 
     num_agents = 3
     num_actions = 2 ** num_agents - 1
     action_vectors = [list(map(int, bin(i)[2:].zfill(num_agents))) for i in range(1, num_actions + 1)]
 
-    log_probabilities = policy_net(state_matrix)
-    probabilities = torch.exp(log_probabilities)  # Convert log-probabilities to probabilities
+    probabilities = policy_net(state).squeeze(0)
     action_index = np.random.choice(len(probabilities), p=probabilities.detach().numpy())
     action_vector = action_vectors[action_index % len(action_vectors)]
     log_prob = torch.log(probabilities[action_index])
@@ -117,10 +118,12 @@ def train_agents(num_agents, num_episodes, fixed_paths):
     gamma = 0.99
 
     agents_paths = [[] for _ in range(num_agents)]
+    reward_history = []  # For plotting rewards
 
     for episode in range(num_episodes):
         print(f"Episode {episode + 1}/{num_episodes}")
 
+        # Initialize paths for agents
         agv_paths = []
         for path in fixed_paths:
             start_index = random.randint(0, len(path) - 1)
@@ -131,14 +134,19 @@ def train_agents(num_agents, num_episodes, fixed_paths):
         rewards = []
         states = []
 
+        # Initialize state matrix
         state_matrix = np.zeros((num_agents, 30))
         for agent_index, path in enumerate(agv_paths):
             if path:
                 for node in path:
                     state_matrix[agent_index, node - 1] += 1
-        state_matrix = torch.flatten(torch.from_numpy(state_matrix))
-        f = False
-        for step in range(200):
+        state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())
+
+        # Flag for stopping
+        done = False
+
+        for step in range(500):
+            # Select actions
             action_vector, step_log_prob = select_actions(policy_net, state_matrix)
 
             for agent_index, action in enumerate(action_vector):
@@ -146,57 +154,62 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                     current_pos = agv_paths[agent_index][0]
                     next_pos = agv_paths[agent_index][1] if len(agv_paths[agent_index]) > 1 else current_pos
 
-                    #reward = 100 if next_pos not in visited_nodes else -10000
+                    # Reward logic
                     if next_pos not in visited_nodes:
                         reward = 10
-
                     else:
-                        reward = -1000
-                        log_probs.append(step_log_prob)
-                        rewards.append(reward)
-                        states.append(state_matrix)
-                        f = True
-                        break
+                        reward = -100
+                        done = True  # End the episode if penalty occurs
+
                     visited_nodes.append(next_pos)
-                    #print(len(visited_nodes))
-                    visited_nodes = visited_nodes[-2:]
-                    #print(len(visited_nodes))
+                    visited_nodes = visited_nodes[-2:]  # Keep the last 2 visited nodes
                     agv_paths[agent_index] = agv_paths[agent_index][1:] if len(agv_paths[agent_index]) > 1 else []
                 else:
                     current_pos = agv_paths[agent_index][0] if agv_paths[agent_index] else None
-                    reward = -1
+                    reward = 1  # Default reward for no action
 
+                # Store rewards, log_probs, and states
                 log_probs.append(step_log_prob)
                 rewards.append(reward)
-                states.append(state_matrix)
+                states.append(state_matrix.clone())
 
                 if current_pos is not None:
                     agents_paths[agent_index].append(current_pos)
-            if f:
-                break
-        #print(len(agents_paths))
+
+                if done:
+                    break
+
+            if done:
+                break  # End the episode if flagged
+
+        # Normalize rewards
+        rewards = torch.tensor(rewards, dtype=torch.float32)
+        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
+
+        # Update policy and value networks
         update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewards, log_probs, states, gamma)
-        print(f"Episode {episode + 1}: Total Reward = {sum(rewards)}")
+
+        # Compute total and discounted rewards
+        total_reward = sum(rewards).item()
+        reward_history.append(total_reward)
         discounted_rewards = []
         for t in range(len(rewards)):
-            G1 = sum(gamma ** i * rewards[i + t] for i in range(len(rewards) - t))
-            discounted_rewards.append(G1)
+            Gt = sum(gamma ** i * rewards[i + t] for i in range(len(rewards) - t))
+            discounted_rewards.append(Gt)
         average_discounted_reward = np.mean(discounted_rewards)
-        print(f"Episode {episode + 1}: Average Discounted Reward = {average_discounted_reward}")
-        import matplotlib.pyplot as plt
 
-        # Store rewards for plotting
-        if 'reward_history' not in locals():
-            reward_history = []
-        reward_history.append(sum(rewards))
+        # Logging for debugging
+        print(f"Episode {episode + 1}: Total Reward = {total_reward:.2f}")
+        print(f"Episode {episode + 1}: Average Discounted Reward = {average_discounted_reward:.2f}")
 
-        # Plot rewards
-        if episode == num_episodes - 1:  # After the last episode
-            plt.plot(reward_history)
-            plt.xlabel('Episode')
-            plt.ylabel('Total Reward')
-            plt.title('Training Rewards Over Time')
-            plt.show()
+    # Plot rewards after training
+    import matplotlib.pyplot as plt
+    plt.plot(reward_history)
+    plt.xlabel('Episode')
+    plt.ylabel('Total Reward')
+    plt.title('Training Rewards Over Time')
+    plt.show()
+
     return agents_paths, G, policy_net
 
 
@@ -277,7 +290,7 @@ def visualize_agents(agents_paths, G):
 if __name__ == "__main__":
     # Training parameters
     num_agents = 3
-    num_episodes = 1000
+    num_episodes = 500
 
     # Train the agents
     agents_paths, G, trained_policy = train_agents(num_agents, num_episodes, fixed_paths)

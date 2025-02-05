@@ -7,17 +7,18 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import random
-
+import copy
 
 # Define the Policy Network
 class PolicyNetwork(nn.Module):
-    def __init__(self, state_size, num_agents):
+    def __init__(self, state_size, num_actions):
         super(PolicyNetwork, self).__init__()
         self.fc1 = nn.Linear(state_size, 128)
-        self.fc2 = nn.Linear(128, num_agents)
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(128, num_actions)
 
     def forward(self, x):
-        x = F.relu(self.fc1(x))
+        x = self.relu(self.fc1(x))
         x = self.fc2(x)
         return F.softmax(x, dim=-1)
 
@@ -48,7 +49,7 @@ def create_graph():
         (25, 15), (15, 16), (16, 15), (16, 26), (26, 16), (16, 17),
         (17, 16), (17, 27), (27, 17), (17, 18), (18, 17), (18, 28),
         (28, 18), (18, 19), (19, 18), (19, 29), (29, 19), (9, 16),
-    (16, 9)
+        (16, 9)
     ]
     G.add_edges_from(edges)
     G.remove_nodes_from([7, 8])
@@ -57,9 +58,9 @@ def create_graph():
 
 # Define fixed paths for each AGV
 fixed_paths = [
-    [1, 4, 11, 12, 22],  # Path for AGV 1
-    [2, 4, 11, 12, 13, 14, 15, 25],  # Path for AGV 2
-    [3, 4, 11, 12, 13, 14, 15, 16, 26]  # Path for AGV 3
+    [1, 4, 11, 12, 22],                  # Path for AGV 1
+    [2, 4, 11, 12, 13, 14, 15, 25],       # Path for AGV 2
+    [3, 4, 11, 12, 13, 14, 15, 16, 26]    # Path for AGV 3
 ]
 
 
@@ -75,135 +76,178 @@ def select_actions(policy_net, state_matrix):
     num_actions = 2 ** num_agents - 1
     action_vectors = [list(map(int, bin(i)[2:].zfill(num_agents))) for i in range(1, num_actions + 1)]
 
-    probabilities = policy_net(state).squeeze(0)
-    action_index = np.random.choice(len(probabilities), p=probabilities.detach().numpy())
-    action_vector = action_vectors[action_index % len(action_vectors)]
-    log_prob = torch.log(probabilities[action_index])
+    probabilities = policy_net(state).squeeze(0)  # shape: (num_actions,)
+    probabilities = probabilities + 1e-8  # Add epsilon for numerical stability
+    probabilities_np = probabilities.detach().numpy()
 
+    if np.any(np.isnan(probabilities_np)):
+        raise ValueError("Probabilities contain NaN")
+
+    action_index = np.random.choice(len(probabilities_np), p=probabilities_np)
+    log_prob = torch.log(probabilities[action_index])
+    action_vector = action_vectors[action_index % len(action_vectors)]
     return action_vector, log_prob
 
 
-def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewards, log_probs, states, gamma=0.99):
+def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewards, log_probs, states, gamma):
+    # Compute discounted rewards
     discounted_rewards = []
-    for t in range(len(rewards)):
-        G = sum(gamma ** i * rewards[i + t] for i in range(len(rewards) - t))
-        discounted_rewards.append(G)
-    discounted_rewards = torch.FloatTensor(discounted_rewards)
+    Gt = 0
+    for reward in reversed(rewards):
+        Gt = reward + gamma * Gt
+        discounted_rewards.insert(0, Gt)
+    discounted_rewards = torch.tensor(discounted_rewards, dtype=torch.float32)
 
-    states = torch.FloatTensor(np.array(states))
-    values = value_net(states).squeeze()
+    # Normalize rewards
+    discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / (discounted_rewards.std() + 1e-8)
 
+    # Compute value loss
+    values = torch.stack([value_net(state.float()) for state in states]).squeeze()
+    value_loss = F.mse_loss(values, discounted_rewards)
+
+    # Compute advantages
     advantages = discounted_rewards - values.detach()
+    advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-    policy_loss = -torch.sum(torch.stack(log_probs) * advantages)
+    # Compute policy loss with entropy regularization
+    policy_loss = -torch.stack([log_prob * advantage for log_prob, advantage in zip(log_probs, advantages)]).mean()
+    entropy = -(torch.stack(log_probs) * torch.stack(log_probs).exp()).mean()
+    policy_loss -= 0.01 * entropy  # Add entropy regularization
+
+    # Optimize policy network
     policy_optimizer.zero_grad()
     policy_loss.backward()
+    torch.nn.utils.clip_grad_norm_(policy_net.parameters(), max_norm=1.0)
     policy_optimizer.step()
 
-    value_loss = F.mse_loss(values, discounted_rewards)
+    # Optimize value network
     value_optimizer.zero_grad()
     value_loss.backward()
+    torch.nn.utils.clip_grad_norm_(value_net.parameters(), max_norm=1.0)
     value_optimizer.step()
-    print(f"Policy Loss: {policy_loss.item()}, Value Loss: {value_loss.item()}")
+
+    #print(f"Policy Loss: {policy_loss.item():.6f}, Value Loss: {value_loss.item():.6f}")
 
 
 def train_agents(num_agents, num_episodes, fixed_paths):
     G = create_graph()
     state_size = 90
-    action_size = 7
+    action_size = 2 ** num_agents - 1  # For 3 agents, 7 joint actions
     policy_net = PolicyNetwork(state_size, action_size)
     value_net = ValueNetwork(state_size)
-    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.01)
-    value_optimizer = optim.Adam(value_net.parameters(), lr=0.01)
+    # Lowered learning rates for stability
+    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.005)
+    value_optimizer = optim.Adam(value_net.parameters(), lr=0.005)
     gamma = 0.99
 
     agents_paths = [[] for _ in range(num_agents)]
-    reward_history = []  # For plotting rewards
+    reward_history = []
 
     for episode in range(num_episodes):
-        print(f"Episode {episode + 1}/{num_episodes}")
+        #print(f"Episode {episode + 1}/{num_episodes}")
 
-        # Initialize paths for agents
+        # Initialize each agent's path (start from a random point in its fixed path)
         agv_paths = []
-        for path in fixed_paths:
+        agv_paths = copy.deepcopy(fixed_paths)
+        agv_paths = fixed_paths.copy()
+        '''for path in fixed_paths:
             start_index = random.randint(0, len(path) - 1)
-            agv_paths.append(path[start_index:])
+            agv_paths.append(path[start_index:].copy())'''
 
-        visited_nodes = []
+        visited_nodes = [None] * num_agents
         log_probs = []
         rewards = []
         states = []
 
-        # Initialize state matrix
-        state_matrix = np.zeros((num_agents, 30))
+        # Build an initial state matrix (each row is a one-hot for the agent’s current path)
+        state_matrix = np.zeros((num_agents, 30), dtype=np.float32)
         for agent_index, path in enumerate(agv_paths):
             if path:
                 for node in path:
                     state_matrix[agent_index, node - 1] += 1
-        state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())  # Ensure float dtype
+        state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())
 
-        # Flag for stopping
         done = False
 
         for step in range(200):
             # Select actions
-            action_vector, step_log_prob = select_actions(policy_net, state_matrix)
+            try:
+                action_vector, step_log_prob = select_actions(policy_net, state_matrix)
+            except ValueError as e:
+                print(f"ValueError in select_actions: {e}")
+                return agents_paths, G, policy_net
 
-            for agent_index, action in enumerate(action_vector):
+            # Process each agent’s decision
+            for agent_index, action in enumerate(reversed(action_vector)):
                 if action == 1 and agv_paths[agent_index]:
+                    #print(action_vector, agent_index)
                     current_pos = agv_paths[agent_index][0]
-                    next_pos = agv_paths[agent_index][1] if len(agv_paths[agent_index]) > 1 else current_pos
-
-                    # Reward logic
-                    if next_pos not in visited_nodes:
-                        reward = 10
+                    next_pos = (agv_paths[agent_index][1] if len(agv_paths[agent_index]) > 1
+                                else current_pos)
+                    for i in range(len(visited_nodes)):
+                        if i != agent_index and next_pos == visited_nodes[i]:
+                            reward = -10000  # Penalty for causing a deadlock
+                            done = True
+                            break  # Exit the loop if the condition is met
+                    if not done:
+                        reward = 100  # Reward for moving to the next node
+                    #print(visited_nodes, "visited_nodes")
+                    visited_nodes[agent_index] = next_pos
+                    #print(visited_nodes, "visited_nodes")
+                    # Move agent forward
+                    if len(agv_paths[agent_index]) > 1:
+                        agv_paths[agent_index] = agv_paths[agent_index][1:]
+                        #print(agv_paths[agent_index])
                     else:
-                        reward = -100
-                        done = True  # End the episode if penalty occurs
-
-                    visited_nodes.append(next_pos)
-                    visited_nodes = visited_nodes[-2:]  # Keep the last 2 visited nodes
-                    agv_paths[agent_index] = agv_paths[agent_index][1:] if len(agv_paths[agent_index]) > 1 else []
+                        agv_paths[agent_index] = []
+                        reward = 1000  # Reward for reaching the goal
+                    #print(agv_paths)
+                elif not agv_paths:
+                    #print(agv_paths)
+                    reward = 30000  # Reward for reaching the goal
                 else:
-                    current_pos = agv_paths[agent_index][0] if agv_paths[agent_index] else None
-                    reward = 1  # Default reward for no action
+                    reward = -100  # Default reward if no action taken
+                    #print(agv_paths[agent_index])
 
-                # Store rewards, log_probs, and states
+
                 log_probs.append(step_log_prob)
                 rewards.append(reward)
-                states.append(state_matrix.clone())  # Clone to avoid in-place modifications
+                states.append(state_matrix.clone())
 
-                if current_pos is not None:
-                    agents_paths[agent_index].append(current_pos)
+                # Record current position (if available) for visualization
+                if agv_paths[agent_index]:
+                    agents_paths[agent_index].append(agv_paths[agent_index][0])
 
                 if done:
                     break
 
             if done:
-                break  # End the episode if flagged
+                break
 
-        # Normalize rewards
+            # Update the state matrix at each time step before the next decision
+            state_matrix = np.zeros((num_agents, 30), dtype=np.float32)
+            for agent_index, path in enumerate(agv_paths):
+                if path:
+                    state_matrix[agent_index, path[0] - 1] = 1.0
+            state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())
+
+        # Convert rewards to tensor (do not normalize here; update_policy will handle it)
         #rewards = torch.tensor(rewards, dtype=torch.float32)
-        rewards = (rewards - np.mean(rewards)) / (np.std(rewards) + 1e-8)
 
-        # Update policy and value networks
         update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewards, log_probs, states, gamma)
 
-        # Compute total and discounted rewards
         total_reward = sum(rewards)
         reward_history.append(total_reward)
+        # Compute a simple discounted reward for logging
         discounted_rewards = []
         for t in range(len(rewards)):
             Gt = sum(gamma ** i * rewards[i + t] for i in range(len(rewards) - t))
             discounted_rewards.append(Gt)
         average_discounted_reward = np.mean(discounted_rewards)
 
-        # Logging for debugging
         print(f"Episode {episode + 1}: Total Reward = {total_reward:.2f}")
-        print(f"Episode {episode + 1}: Average Discounted Reward = {average_discounted_reward:.2f}")
+        #print(f"Episode {episode + 1}: Average Discounted Reward = {average_discounted_reward:.2f}")
 
-    # Plot rewards after training
-    import matplotlib.pyplot as plt
     plt.plot(reward_history)
     plt.xlabel('Episode')
     plt.ylabel('Total Reward')
@@ -221,33 +265,31 @@ def test_policy(policy_net, num_agents, fixed_paths, num_test_episodes=5):
         print(f"Test Episode {episode + 1}/{num_test_episodes}")
 
         agv_paths = [path.copy() for path in fixed_paths]
-        #print(agv_paths)
         episode_paths = [[] for _ in range(num_agents)]
 
-        state_matrix = np.zeros((num_agents, 30))
+        state_matrix = np.zeros((num_agents, 30), dtype=np.float32)
         for agent_index, path in enumerate(agv_paths):
             if path:
                 for node in path:
                     state_matrix[agent_index, node - 1] += 1
-
-        state_matrix = torch.flatten(torch.from_numpy(state_matrix))
+        state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())
 
         for step in range(500):
             action_vector, _ = select_actions(policy_net, state_matrix)
-
             for agent_index, action in enumerate(action_vector):
-                #print(agent_index)
                 if agv_paths[agent_index]:
                     current_pos = agv_paths[agent_index][0]
-
                     if action == 1 and agv_paths[agent_index]:
                         agv_paths[agent_index] = agv_paths[agent_index][1:] if len(agv_paths[agent_index]) > 1 else []
                         if agv_paths[agent_index]:
                             current_pos = agv_paths[agent_index][0]
                     episode_paths[agent_index].append(current_pos)
+            state_matrix = np.zeros((num_agents, 30), dtype=np.float32)
+            for agent_index, path in enumerate(agv_paths):
+                if path:
+                    state_matrix[agent_index, path[0] - 1] = 1.0
+            state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())
         test_paths.append(episode_paths)
-    print(agv_paths)
-    print((test_paths))
     return test_paths
 
 
@@ -255,18 +297,15 @@ def visualize_agents(agents_paths, G):
     pos = nx.kamada_kawai_layout(G)
     fig, ax = plt.subplots()
     nx.draw(G, pos, ax=ax, with_labels=True, node_color='lightblue', node_size=500, font_size=10)
-    #plt.show()
     colors = ['red', 'blue', 'green', 'orange', 'purple', 'pink', 'yellow', 'cyan']
     agent_positions = [None] * len(agents_paths)
 
     def update(frame):
         ax.clear()
         nx.draw(G, pos, ax=ax, with_labels=True, node_color='lightblue', node_size=500, font_size=10)
-
         for i, path in enumerate(agents_paths):
             if frame < len(path):
                 agent_positions[i] = path[frame]
-
         for i, node in enumerate(agent_positions):
             if node is not None:
                 nx.draw_networkx_nodes(
@@ -278,17 +317,14 @@ def visualize_agents(agents_paths, G):
                     ax=ax,
                     label=f'Agent {i + 1}'
                 )
-
         ax.legend()
 
-    ani = animation.FuncAnimation(fig, update, frames=max(len(path) for path in agents_paths), repeat=False,
-                                  interval=1000)
+    ani = animation.FuncAnimation(fig, update, frames=max(len(path) for path in agents_paths), repeat=False, interval=1000)
     plt.show()
 
 
 # Main execution
 if __name__ == "__main__":
-    # Training parameters
     num_agents = 3
     num_episodes = 500
 
@@ -298,10 +334,8 @@ if __name__ == "__main__":
     # Test the trained policy
     test_results = test_policy(trained_policy, num_agents, fixed_paths)
 
-    # Visualize training results
     print("Visualizing training results...")
     visualize_agents(agents_paths, G)
 
-    # Visualize test results
     print("Visualizing test results...")
-    visualize_agents(test_results[4], G)  # Visualize first test episode
+    visualize_agents(test_results[0], G)
