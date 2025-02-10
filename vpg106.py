@@ -242,6 +242,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                 log_probs.append(step_log_prob)
                 rewards.append(reward)
                 states.append(state_matrix.clone())
+                print(states, "states")
 
                 # Record current position (if available) for visualization
                 if agv_paths[agent_index]:
