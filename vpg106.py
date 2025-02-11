@@ -15,18 +15,61 @@ class PolicyNetwork(nn.Module):
     def __init__(self, state_size, num_actions):
         super(PolicyNetwork, self).__init__()
         self.fc1 = nn.Linear(state_size, 256)
-        self.ln1 = nn.LayerNorm(256)  # Replace BatchNorm1d with LayerNorm
+        self.ln1 = nn.LayerNorm(256, eps=1e-8)  # Replace BatchNorm1d with LayerNorm
         self.fc2 = nn.Linear(256, 128)
-        self.ln2 = nn.LayerNorm(128)  # Replace BatchNorm1d with LayerNorm
+        self.ln2 = nn.LayerNorm(128, eps=1e-8)  # Replace BatchNorm1d with LayerNorm
         self.fc3 = nn.Linear(128, num_actions)
         self.dropout = nn.Dropout(p=0.3)
 
     def forward(self, x):
-        x = F.relu(self.ln1(self.fc1(x)))  # Use LayerNorm
+        # Debugging: Check for NaN in input
+        if torch.isnan(x).any():
+            print("Input to PolicyNetwork contains NaN")
+            print(x)
+            raise ValueError("Input to PolicyNetwork contains NaN")
+        #else:
+            #print("input values", x, "input values")
+
+        # First layer
+        x = self.fc1(x)
+        if torch.isnan(x).any():
+            raise ValueError("NaN detected after fc1")
+
+        x = self.ln1(x)
+        if torch.isnan(x).any():
+            raise ValueError("NaN detected after ln1")
+
+        x = F.relu(x)
+        if torch.isnan(x).any():
+            raise ValueError("NaN detected after relu1")
+
         x = self.dropout(x)
-        x = F.relu(self.ln2(self.fc2(x)))  # Use LayerNorm
+        if torch.isnan(x).any():
+            raise ValueError("NaN detected after dropout1")
+
+        # Second layer
+        x = self.fc2(x)
+        if torch.isnan(x).any():
+            raise ValueError("NaN detected after fc2")
+
+        x = self.ln2(x)
+        if torch.isnan(x).any():
+            raise ValueError("NaN detected after ln2")
+
+        x = F.relu(x)
+        if torch.isnan(x).any():
+            raise ValueError("NaN detected after relu2")
+
+        # Output layer
         x = self.fc3(x)
-        return F.softmax(x, dim=-1)
+        if torch.isnan(x).any():
+            raise ValueError("NaN detected after fc3")
+
+        x = F.softmax(x, dim=-1)
+        if torch.isnan(x).any():
+            raise ValueError("NaN detected after softmax")
+
+        return x
 
 
 # Define the Value Network
@@ -83,13 +126,14 @@ def select_actions(policy_net, state_matrix, num_agents, deterministic=False):
     else:
         raise TypeError("state_matrix must be either a NumPy array or a PyTorch tensor")
 
-
+    #print(state)
     num_actions = 2 ** num_agents - 1
     action_vectors = [list(map(int, bin(i)[2:].zfill(num_agents))) for i in range(1, num_actions + 1)]
 
     probabilities = policy_net(state).squeeze(0)  # shape: (num_actions,)
     probabilities = probabilities + 1e-8  # Add epsilon for numerical stability
     probabilities_np = probabilities.detach().numpy()
+    #print(probabilities_np)
 
     if np.any(np.isnan(probabilities_np)):
         raise ValueError("Probabilities contain NaN")
@@ -145,7 +189,10 @@ def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewa
 
     #print(f"Policy Loss: {policy_loss.item():.6f}, Value Loss: {value_loss.item():.6f}")
 
-
+def init_weights(m):
+    if isinstance(m, nn.Linear):
+        nn.init.xavier_uniform_(m.weight)
+        nn.init.zeros_(m.bias)
 def train_agents(num_agents, num_episodes, fixed_paths):
     G = create_graph()
     state_size = 30 * num_agents
@@ -159,10 +206,10 @@ def train_agents(num_agents, num_episodes, fixed_paths):
 
     agents_paths = [[] for _ in range(num_agents)]
     reward_history = []
-
+    #print("Training")
     for episode in range(num_episodes):
         #print(f"Episode {episode + 1}/{num_episodes}")
-
+        print("Training")
         # Initialize each agent's path (start from a random point in its fixed path)
         agv_paths = []
         agv_paths = copy.deepcopy(fixed_paths)
@@ -189,7 +236,11 @@ def train_agents(num_agents, num_episodes, fixed_paths):
         for step in range(200):
             # Select actions
             try:
+
+                print("Selecting Actions")
+                #print(policy_net, state_matrix, num_agents)
                 action_vector, step_log_prob = select_actions(policy_net, state_matrix, num_agents)
+                print("action selected")
             except ValueError as e:
                 print(f"ValueError in select_actions: {e}")
                 return agents_paths, G, policy_net
@@ -237,33 +288,44 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                     reward = -1  # Default reward if no action taken
                     #print(agv_paths[agent_index])"""
                 reward -= 10 * len(agv_paths[agent_index])  # Penalize longer paths
-
-
-                log_probs.append(step_log_prob)
-                rewards.append(reward)
-                states.append(state_matrix.clone())
-                print(states, "states")
-
                 # Record current position (if available) for visualization
                 if agv_paths[agent_index]:
                     agents_paths[agent_index].append(agv_paths[agent_index][0])
-
                 if done:
+                    print("done1")
                     break
 
-            if done:
-                break
 
+
+
+            log_probs.append(step_log_prob)
+            rewards.append(reward)
+            states.append(state_matrix.clone())
+            #print(len(rewards))
+            #print(len(states))
+            #print(states, "states")
+
+
+
+
+            """if done:
+                print(f"Breaking at the end of the time step loop. Step: {step}, Agent Paths: {agv_paths}")
+                break"""
             # Update the state matrix at each time step before the next decision
+            print("Updating State Matrix")
             state_matrix = np.zeros((num_agents, 30), dtype=np.float32)
             for agent_index, path in enumerate(agv_paths):
                 if path:
                     state_matrix[agent_index, path[0] - 1] = 1.0
             state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())
 
+
+        #print(states)
         # Convert rewards to tensor (do not normalize here; update_policy will handle it)
         #rewards = torch.tensor(rewards, dtype=torch.float32)
-
+        #print("State Matrix:", state_matrix)  # Debugging: Print state matrix
+        print(states)
+        print(rewards)
         update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewards, log_probs, states, gamma)
 
         total_reward = sum(rewards)
@@ -357,7 +419,7 @@ def visualize_agents(agents_paths, G):
 # Main execution
 if __name__ == "__main__":
     num_agents = len(fixed_paths)
-    num_episodes = 300
+    num_episodes = 100
 
     # Train the agents
     agents_paths, G, trained_policy = train_agents(num_agents, num_episodes, fixed_paths)

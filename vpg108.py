@@ -138,7 +138,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
     for episode in range(num_episodes):
         # Initialize each agent's path (start from a random point in its fixed path)
         agv_paths = copy.deepcopy(fixed_paths)
-
+        print("tRAINFING")
         visited_nodes = [None] * num_agents
         log_probs = []
         rewards = []
@@ -157,6 +157,8 @@ def train_agents(num_agents, num_episodes, fixed_paths):
         for step in range(200):
             # Select actions
             try:
+                #print("sss", state_matrix)
+                print("select")
                 action_vector, step_log_prob = select_actions(policy_net, state_matrix)
             except ValueError as e:
                 print(f"ValueError in select_actions: {e}")
@@ -164,7 +166,6 @@ def train_agents(num_agents, num_episodes, fixed_paths):
 
             # Process each agent’s decision
             for agent_index, action in enumerate(reversed(action_vector)):
-                print(action_vector)
                 if action == 1 and agv_paths[agent_index]:
                     current_pos = agv_paths[agent_index][0]
                     next_pos = (agv_paths[agent_index][1] if len(agv_paths[agent_index]) > 1
@@ -179,12 +180,13 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                     visited_nodes[agent_index] = next_pos
                     if len(agv_paths[agent_index]) > 1:
                         agv_paths[agent_index] = agv_paths[agent_index][1:]
-                        print(agv_paths[agent_index])
                     else:
                         agv_paths[agent_index] = []
                         reward = 1000  # Reward for reaching the goal
-                        if not agv_paths:
+                        if all(not path for path in agv_paths):
                             reward = 30000  # Reward for reaching the goal
+                            done = True
+                            break
                 else:
                     reward = -100  # Default reward if no action taken
 
@@ -200,15 +202,18 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                     break
 
             if done:
+                print("second break")
                 break
-
+            print("what")
             # Update the state matrix at each time step before the next decision
             state_matrix = np.zeros((num_agents, 30), dtype=np.float32)
             for agent_index, path in enumerate(agv_paths):
                 if path:
                     state_matrix[agent_index, path[0] - 1] = 1.0
             state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())
-
+        print("update")
+        print(rewards)
+        print(states)
         update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewards, log_probs, states, gamma)
 
         total_reward = sum(rewards)
@@ -233,7 +238,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
 # Main execution
 if __name__ == "__main__":
     num_agents = 3
-    num_episodes = 500
+    num_episodes = 100
 
     # Train the agents
     agents_paths, G, trained_policy = train_agents(num_agents, num_episodes, fixed_paths)
