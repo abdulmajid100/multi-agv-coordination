@@ -94,21 +94,29 @@ def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewa
     discounted_rewards = torch.tensor(discounted_rewards, dtype=torch.float32)
 
     # Normalize rewards
-    discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / (discounted_rewards.std() + 1e-8)
+    if discounted_rewards.numel() > 1:
+        discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / (discounted_rewards.std() + 1e-8)
+    else:
+        print(discounted_rewards.numel(), "discounted rewards")
+        discounted_rewards = discounted_rewards - discounted_rewards.mean()  # Optionally, just center it
 
     # Compute value loss
     values = torch.stack([value_net(state.float()) for state in states]).squeeze()
+    if values.shape != discounted_rewards.shape:
+        print(values.shape, discounted_rewards.shape)
     value_loss = F.mse_loss(values, discounted_rewards)
-
+    print(value_loss.item())
     # Compute advantages
     advantages = discounted_rewards - values.detach()
-    advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+    print(len(advantages), "advantages")
+    if advantages.numel() > 1:
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
     # Compute policy loss with entropy regularization
     policy_loss = -torch.stack([log_prob * advantage for log_prob, advantage in zip(log_probs, advantages)]).mean()
     entropy = -(torch.stack(log_probs) * torch.stack(log_probs).exp()).mean()
     policy_loss -= 0.01 * entropy  # Add entropy regularization
-
+    print(policy_loss.item(), value_loss.item(), advantages.mean())
     # Optimize policy network
     policy_optimizer.zero_grad()
     policy_loss.backward()
@@ -190,9 +198,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                 else:
                     reward = -100  # Default reward if no action taken
 
-                log_probs.append(step_log_prob)
-                rewards.append(reward)
-                states.append(state_matrix.clone())
+
 
                 # Record current position (if available) for visualization
                 if agv_paths[agent_index]:
@@ -200,11 +206,14 @@ def train_agents(num_agents, num_episodes, fixed_paths):
 
                 if done:
                     break
-
+            log_probs.append(step_log_prob)
+            rewards.append(reward)
+            states.append(state_matrix.clone())
             if done:
                 print("second break")
                 break
             print("what")
+
             # Update the state matrix at each time step before the next decision
             state_matrix = np.zeros((num_agents, 30), dtype=np.float32)
             for agent_index, path in enumerate(agv_paths):

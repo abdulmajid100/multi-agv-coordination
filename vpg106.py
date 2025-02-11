@@ -160,7 +160,8 @@ def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewa
     discounted_rewards = torch.tensor(discounted_rewards, dtype=torch.float32)
 
     # Normalize rewards
-    discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / (discounted_rewards.std() + 1e-8)
+
+    #discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / (discounted_rewards.std() + 1e-8)
 
     # Compute value loss
     values = torch.stack([value_net(state.float()) for state in states]).squeeze()
@@ -168,7 +169,7 @@ def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewa
 
     # Compute advantages
     advantages = discounted_rewards - values.detach()
-    advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+    #advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
     # Compute policy loss with entropy regularization
     policy_loss = -torch.stack([log_prob * advantage for log_prob, advantage in zip(log_probs, advantages)]).mean()
@@ -209,7 +210,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
     #print("Training")
     for episode in range(num_episodes):
         #print(f"Episode {episode + 1}/{num_episodes}")
-        print("Training")
+        #print("Training")
         # Initialize each agent's path (start from a random point in its fixed path)
         agv_paths = []
         agv_paths = copy.deepcopy(fixed_paths)
@@ -233,14 +234,14 @@ def train_agents(num_agents, num_episodes, fixed_paths):
 
         done = False
         reward = 0
-        for step in range(200):
+        for step in range(50):
             # Select actions
             try:
 
-                print("Selecting Actions")
+                #print("Selecting Actions")
                 #print(policy_net, state_matrix, num_agents)
                 action_vector, step_log_prob = select_actions(policy_net, state_matrix, num_agents)
-                print("action selected")
+                #print("action selected")
             except ValueError as e:
                 print(f"ValueError in select_actions: {e}")
                 return agents_paths, G, policy_net
@@ -292,7 +293,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                 if agv_paths[agent_index]:
                     agents_paths[agent_index].append(agv_paths[agent_index][0])
                 if done:
-                    print("done1")
+                    #print("done1")
                     break
 
 
@@ -309,10 +310,10 @@ def train_agents(num_agents, num_episodes, fixed_paths):
 
 
             if done:
-                print(f"Breaking at the end of the time step loop. Step: {step}, Agent Paths: {agv_paths}")
+                #print(f"Breaking at the end of the time step loop. Step: {step}, Agent Paths: {agv_paths}")
                 break
             # Update the state matrix at each time step before the next decision
-            print("Updating State Matrix")
+            #print("Updating State Matrix")
             state_matrix = np.zeros((num_agents, 30), dtype=np.float32)
             for agent_index, path in enumerate(agv_paths):
                 if path:
@@ -324,8 +325,8 @@ def train_agents(num_agents, num_episodes, fixed_paths):
         # Convert rewards to tensor (do not normalize here; update_policy will handle it)
         #rewards = torch.tensor(rewards, dtype=torch.float32)
         #print("State Matrix:", state_matrix)  # Debugging: Print state matrix
-        print(states)
-        print(rewards)
+        #print(states)
+        #print(rewards)
         update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewards, log_probs, states, gamma)
 
         total_reward = sum(rewards)
@@ -419,7 +420,7 @@ def visualize_agents(agents_paths, G):
 # Main execution
 if __name__ == "__main__":
     num_agents = len(fixed_paths)
-    num_episodes = 100
+    num_episodes = 10000
 
     # Train the agents
     agents_paths, G, trained_policy = train_agents(num_agents, num_episodes, fixed_paths)
