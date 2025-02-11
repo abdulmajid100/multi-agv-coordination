@@ -308,9 +308,9 @@ def train_agents(num_agents, num_episodes, fixed_paths):
 
 
 
-            """if done:
+            if done:
                 print(f"Breaking at the end of the time step loop. Step: {step}, Agent Paths: {agv_paths}")
-                break"""
+                break
             # Update the state matrix at each time step before the next decision
             print("Updating State Matrix")
             state_matrix = np.zeros((num_agents, 30), dtype=np.float32)
