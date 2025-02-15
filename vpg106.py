@@ -113,8 +113,8 @@ fixed_paths_2 = [
 ]
 fixed_paths = [
     [9, 16, 15, 25],
-    [25, 15, 14, 13, 12, 11, 4, 2],
-    [11, 12, 13, 14, 15, 16, 26]
+    [26, 16, 15, 14, 13, 12, 11, 4, 2],
+    [11, 12, 13, 14, 15, 16, 17, 27]
 ]
 
 
@@ -204,8 +204,8 @@ def train_agents(num_agents, num_episodes, fixed_paths):
     policy_net = PolicyNetwork(state_size, action_size)
     value_net = ValueNetwork(state_size)
     # Lowered learning rates for stability
-    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.0005)
-    value_optimizer = optim.Adam(value_net.parameters(), lr=0.0005)
+    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.005)
+    value_optimizer = optim.Adam(value_net.parameters(), lr=0.005)
     gamma = 0.9
 
     agents_paths = [[] for _ in range(num_agents)]
@@ -235,7 +235,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                 for node in path:
                     state_matrix[agent_index, node - 1] += 1
         state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())
-
+        #print(agv_paths)
         done = False
         reward = 0
         for step in range(100):
@@ -262,7 +262,8 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         #print(i, "i")
                         #print(agent_index, "j")
                         if i != agent_index and (next_pos == visited_nodes[i] or next_pos == visited_nodes2[i]):
-                            reward = -100000  # Penalty for causing a deadlock
+                            #print(agent_index, "agent",next_pos, "next_pos", visited_nodes, "visited_nodes[i]", visited_nodes2, "visited_nodes2[i]")
+                            reward -= 50  # Penalty for causing a deadlock
                             done = True
                             break  # Exit the loop if the condition is met
                     if not done:
@@ -279,24 +280,29 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                     # Move agent forward
                         if len(agv_paths[agent_index]) > 1:
                             agv_paths[agent_index] = agv_paths[agent_index][1:]
-                            reward += 1000  # Reward for moving to the next node
+                            reward += 2  # Reward for moving to the next node
                             #print(agv_paths)
                         #print(agv_paths[agent_index])
                         else:
                             agv_paths[agent_index] = []
-                            reward += 1000  # Reward for reaching the goal
+                            reward += 2  # Reward for reaching the goal
                             #print(agv_paths)
                             if all(not path for path in agv_paths):
                     #print(agv_paths)
-                                reward += 1000  # Reward for reaching the goal
+                                reward += 10  # Reward for reaching the goal
                                 #print(agv_paths, "agv_paths")
                                 done = True
                                 break
                 elif action == 0:
-                    reward -= 10  # Default reward if no action taken
+                    if len(agv_paths[agent_index]) >= 1:
+                        current_pos = agv_paths[agent_index][0]
+                        next_pos = agv_paths[agent_index][0]
+                        visited_nodes2[agent_index] = current_pos
+                        visited_nodes[agent_index] = next_pos
+                    reward -= 1  # Default reward if no action taken
                     #print(agv_paths[agent_index])
-                #reward -= 10 * len(agv_paths[agent_index])  # Penalize longer paths
-                reward -= 100
+                #reward -= 1 * len(agv_paths[agent_index])  # Penalize longer paths
+
                 # Record current position (if available) for visualization
                 if agv_paths[agent_index]:
                     agents_paths[agent_index].append(agv_paths[agent_index][0])
@@ -305,7 +311,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                     break
 
 
-
+            #reward -= step
 
             log_probs.append(step_log_prob)
             rewards.append(reward)
@@ -375,7 +381,7 @@ def test_policy(policy_net, num_agents, fixed_paths, num_test_episodes=5):
                     state_matrix[agent_index, node - 1] += 1
         state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())
 
-        for step in range(500):
+        for step in range(100):
             action_vector, _ = select_actions(policy_net, state_matrix, num_agents, deterministic=True)
             for agent_index, action in enumerate(reversed(action_vector)):
                 if agv_paths[agent_index]:
@@ -428,7 +434,7 @@ def visualize_agents(agents_paths, G):
 # Main execution
 if __name__ == "__main__":
     num_agents = len(fixed_paths)
-    num_episodes = 300
+    num_episodes = 500
 
     # Train the agents
     agents_paths, G, trained_policy = train_agents(num_agents, num_episodes, fixed_paths)
