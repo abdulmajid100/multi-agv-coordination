@@ -15,60 +15,22 @@ class PolicyNetwork(nn.Module):
     def __init__(self, state_size, num_actions):
         super(PolicyNetwork, self).__init__()
         self.fc1 = nn.Linear(state_size, 256)
-        self.ln1 = nn.LayerNorm(256, eps=1e-8)  # Replace BatchNorm1d with LayerNorm
+        self.ln1 = nn.LayerNorm(256, eps=1e-8)
         self.fc2 = nn.Linear(256, 128)
-        self.ln2 = nn.LayerNorm(128, eps=1e-8)  # Replace BatchNorm1d with LayerNorm
+        self.ln2 = nn.LayerNorm(128, eps=1e-8)
         self.fc3 = nn.Linear(128, num_actions)
         self.dropout = nn.Dropout(p=0.3)
 
     def forward(self, x):
-        # Debugging: Check for NaN in input
-        if torch.isnan(x).any():
-            print("Input to PolicyNetwork contains NaN")
-            print(x)
-            raise ValueError("Input to PolicyNetwork contains NaN")
-        #else:
-            #print("input values", x, "input values")
-
-        # First layer
         x = self.fc1(x)
-        if torch.isnan(x).any():
-            raise ValueError("NaN detected after fc1")
-
         x = self.ln1(x)
-        if torch.isnan(x).any():
-            raise ValueError("NaN detected after ln1")
-
         x = F.relu(x)
-        if torch.isnan(x).any():
-            raise ValueError("NaN detected after relu1")
-
         x = self.dropout(x)
-        if torch.isnan(x).any():
-            raise ValueError("NaN detected after dropout1")
-
-        # Second layer
         x = self.fc2(x)
-        if torch.isnan(x).any():
-            raise ValueError("NaN detected after fc2")
-
         x = self.ln2(x)
-        if torch.isnan(x).any():
-            raise ValueError("NaN detected after ln2")
-
         x = F.relu(x)
-        if torch.isnan(x).any():
-            raise ValueError("NaN detected after relu2")
-
-        # Output layer
         x = self.fc3(x)
-        if torch.isnan(x).any():
-            raise ValueError("NaN detected after fc3")
-
         x = F.softmax(x, dim=-1)
-        if torch.isnan(x).any():
-            raise ValueError("NaN detected after softmax")
-
         return x
 
 
@@ -77,11 +39,13 @@ class ValueNetwork(nn.Module):
     def __init__(self, state_size):
         super(ValueNetwork, self).__init__()
         self.fc1 = nn.Linear(state_size, 256)
-        self.fc2 = nn.Linear(256, 1)
+        self.fc2 = nn.Linear(256, 128)
+        self.fc3 = nn.Linear(128, 1)
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
-        return self.fc2(x)
+        x = F.relu(self.fc2(x))
+        return self.fc3(x)
 
 
 # Create a directed graph environment
@@ -106,16 +70,16 @@ def create_graph():
 
 
 # Define fixed paths for each AGV
-fixed_paths_2 = [
+fixed_paths = [
     [1, 4, 11, 12, 22],
     [2, 4, 11, 12, 13, 14, 15, 25],
-    [26, 16, 15, 14, 13, 12, 11, 4, 3, 4, 11, 12, 13, 14, 15, 16, 26]
+    [26, 16, 17, 18, 28]
 ]
-fixed_paths = [
+"""fixed_paths = [
     [9, 16, 15, 25],
-    [26, 16, 15, 14, 13, 12, 11, 4, 2],
+    [25, 15, 14, 13, 12, 11, 4, 2],
     [11, 12, 13, 14, 15, 16, 17, 27]
-]
+]"""
 
 
 def select_actions(policy_net, state_matrix, num_agents, deterministic=False):
@@ -263,7 +227,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         #print(agent_index, "j")
                         if i != agent_index and (next_pos == visited_nodes[i] or next_pos == visited_nodes2[i]):
                             #print(agent_index, "agent",next_pos, "next_pos", visited_nodes, "visited_nodes[i]", visited_nodes2, "visited_nodes2[i]")
-                            reward -= 5000  # Penalty for causing a deadlock
+                            reward -= 30000  # Penalty for causing a deadlock
                             done = True
                             break  # Exit the loop if the condition is met
                     if not done:
@@ -280,16 +244,17 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                     # Move agent forward
                         if len(agv_paths[agent_index]) > 1:
                             agv_paths[agent_index] = agv_paths[agent_index][1:]
-                            reward += 20  # Reward for moving to the next node
+                            #print(agv_paths)
+                            reward += 1  # Reward for moving to the next node
                             #print(agv_paths)
                         #print(agv_paths[agent_index])
                         else:
                             agv_paths[agent_index] = []
-                            reward += 20  # Reward for reaching the goal
+                            reward += 50  # Reward for reaching the goal
                             #print(agv_paths)
                             if all(not path for path in agv_paths):
                     #print(agv_paths)
-                                reward += 50000  # Reward for reaching the goal
+                                reward += 1000  # Reward for reaching the goal
                                 #print(agv_paths, "agv_paths")
                                 done = True
                                 break
@@ -303,13 +268,15 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         # print(agent_index, "j")
                         if i != agent_index and (next_pos != visited_nodes[i] and next_pos != visited_nodes2[i]):
                             # print(agent_index, "agent",next_pos, "next_pos", visited_nodes, "visited_nodes[i]", visited_nodes2, "visited_nodes2[i]")
-                            reward -= 100  # Penalty for causing a deadlock
+                            reward -= 50  # Penalty for causing a deadlock
+                        else:
+                            reward += 5  # Reward for moving to the next node
                     if len(agv_paths[agent_index]) >= 1:
                         current_pos = agv_paths[agent_index][0]
                         next_pos = agv_paths[agent_index][0]
                         visited_nodes2[agent_index] = current_pos
                         visited_nodes[agent_index] = next_pos
-                    reward -= 10  # Default reward if no action taken
+                reward -= 5  # Default reward if no action taken
                     #print(agv_paths[agent_index])
                 #reward -= 1 * len(agv_paths[agent_index])  # Penalize longer paths
 
@@ -444,7 +411,7 @@ def visualize_agents(agents_paths, G):
 # Main execution
 if __name__ == "__main__":
     num_agents = len(fixed_paths)
-    num_episodes = 500
+    num_episodes = 300
 
     # Train the agents
     agents_paths, G, trained_policy = train_agents(num_agents, num_episodes, fixed_paths)
