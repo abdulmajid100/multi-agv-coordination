@@ -264,16 +264,16 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         if len(agv_paths[agent_index]) > 1:
                             agv_paths[agent_index] = agv_paths[agent_index][1:]
                             #print(agv_paths)
-                            reward += 100  # Reward for moving to the next node
+                            reward += 10  # Reward for moving to the next node
                             #print(agv_paths)
                         #print(agv_paths[agent_index])
                         else:
                             agv_paths[agent_index] = []
-                            reward += 500  # Reward for reaching the goal
+                            reward += 50  # Reward for reaching the goal
                             #print(agv_paths)
                             if all(not path for path in agv_paths):
                     #print(agv_paths)
-                                reward += 10000  # Reward for reaching the goal
+                                reward += 500  # Reward for reaching the goal
                                 #print(agv_paths, "agv_paths")
                                 done = True
                                 break
@@ -287,15 +287,15 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         # print(agent_index, "j")
                         if i != agent_index and (next_pos != visited_nodes[i] and next_pos != visited_nodes2[i]):
                             # print(agent_index, "agent",next_pos, "next_pos", visited_nodes, "visited_nodes[i]", visited_nodes2, "visited_nodes2[i]")
-                            reward -= 100  # Penalty for causing a deadlock
+                            reward -= 10  # Penalty for causing a deadlock
                         else:
-                            reward += 100  # Reward for moving to the next node
+                            reward += 0  # Reward for moving to the next node
                     if len(agv_paths[agent_index]) >= 1:
                         current_pos = agv_paths[agent_index][0]
                         next_pos = agv_paths[agent_index][0]
                         visited_nodes2[agent_index] = current_pos
                         visited_nodes[agent_index] = next_pos
-                reward -= 10  # Default reward if no action taken
+                reward -= 1  # Default reward if no action taken
                     #print(agv_paths[agent_index])
                 #reward -= 1 * len(agv_paths[agent_index])  # Penalize longer paths
 
@@ -433,7 +433,7 @@ def visualize_agents(agents_paths, G):
 # Main execution
 if __name__ == "__main__":
     num_agents = len(fixed_paths)
-    num_episodes = 1000
+    num_episodes = 300
 
     # Train the agents
     agents_paths, G, trained_policy = train_agents(num_agents, num_episodes, fixed_paths)
