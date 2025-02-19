@@ -208,8 +208,8 @@ def train_agents(num_agents, num_episodes, fixed_paths):
     value_net = ValueNetwork(state_size)
 
     # Lowered learning rates for stability
-    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.005)
-    value_optimizer = optim.Adam(value_net.parameters(), lr=0.005)
+    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.0000000000000005)
+    value_optimizer = optim.Adam(value_net.parameters(), lr=0.000000000000005)
     gamma = 0.9  # Discount factor
 
     agents_paths = [[] for _ in range(num_agents)]

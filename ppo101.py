@@ -41,10 +41,13 @@ class ValueNetwork(nn.Module):
         self.fc1 = nn.Linear(state_size, 256)
         self.fc2 = nn.Linear(256, 128)
         self.fc3 = nn.Linear(128, 1)
+        self.dropout = nn.Dropout(p=0.3)
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
+        x = self.dropout(x)
         x = F.relu(self.fc2(x))
+        x = self.dropout(x)
         return self.fc3(x)
 
 
@@ -112,39 +115,52 @@ def select_actions(policy_net, state_matrix, num_agents, deterministic=False):
     log_prob = torch.log(probabilities[action_index])
     action_vector = action_vectors[action_index % len(action_vectors)]
     return action_vector, log_prob
-
-
-def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewards, log_probs, states, gamma, ppo_epochs=3, epsilon=0.1):
-    # Compute discounted rewards
+def normalize_rewards(rewards):
+    rewards = torch.tensor(rewards, dtype=torch.float32)
+    return (rewards - rewards.mean()) / (rewards.std() + 1e-8)
+def compute_discounted_rewards(rewards, gamma):
     discounted_rewards = []
-    Gt = 0
+    cumulative_reward = 0
+    """if len(rewards)  > 1:
+        rewards = normalize_rewards(rewards)"""
     for reward in reversed(rewards):
-        Gt = reward + gamma * Gt
-        discounted_rewards.insert(0, Gt)
+        cumulative_reward = reward + gamma * cumulative_reward
+        discounted_rewards.insert(0, cumulative_reward)
     discounted_rewards = torch.tensor(discounted_rewards, dtype=torch.float32)
-
-    # Normalize rewards (optional, improves stability)
-    # Normalize rewards only if there is more than one element
     if len(discounted_rewards) > 1:
         discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / (discounted_rewards.std() + 1e-8)
     else:
-        discounted_rewards = discounted_rewards  # No normalization needed for a single element
+        discounted_rewards = (discounted_rewards - discounted_rewards.mean())
+        #print(discounted_rewards)
+    return discounted_rewards
 
-    # Perform multiple PPO updates
+def compute_gae(rewards, values, gamma, lambda_):
+    advantages = []
+    advantage = 0
+    for t in reversed(range(len(rewards))):
+        delta_t = rewards[t] + gamma * (values[t+1] if t < len(rewards) - 1 else 0) - values[t]
+        advantage = delta_t + gamma * lambda_ * advantage
+        advantages.insert(0, advantage)
+    return torch.tensor(advantages, dtype=torch.float32)
+def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewards, log_probs, states, gamma, lambda_, discounted_rewards, ppo_epochs=3, epsilon=0.3):
+    # Compute values for states
+    values = torch.stack([value_net(state.float()) for state in states]).squeeze()
+    values = values.view(-1)  # Reshape if necessary
+
+    # Compute GAE advantages
+    advantages = compute_gae(rewards, values.detach(), gamma, lambda_)
+
+    # Normalize advantages (optional, improves stability)
+    if len(advantages) > 1:
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+    else:
+        advantages = (advantages - advantages.mean())
+
+    # Compute value loss
+    value_loss = F.mse_loss(values, discounted_rewards)
+
+    # Perform PPO updates
     for _ in range(ppo_epochs):
-        # Recompute values for states during each epoch
-        values = torch.stack([value_net(state.float()) for state in states]).squeeze()
-        values = values.view(-1)  # Reshape if necessary
-        discounted_rewards = discounted_rewards.view(-1)  # Ensure target is also reshaped
-
-        # Compute advantages
-        advantages = discounted_rewards - values.detach()
-        if len(advantages) > 1:
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)   # Normalize advantages
-        else:
-            advantages = advantages
-        #advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)  # Normalize advantages
-
         # Recompute log probabilities for the current policy
         new_log_probs = []
         for state, old_log_prob in zip(states, log_probs):
@@ -165,22 +181,19 @@ def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewa
 
         # Entropy regularization (optional, encourages exploration)
         entropy = -(torch.exp(new_log_probs) * new_log_probs).mean()
-        policy_loss -= 0.02 * entropy  # Add entropy bonus
+        policy_loss -= 0.01 * entropy  # Add entropy bonus
 
-        # Compute value loss
-        value_loss = F.mse_loss(values, discounted_rewards)
-
-        # Optimize policy network
+        # Optimize policy network (actor)
         policy_optimizer.zero_grad()
-        policy_loss.backward()
+        policy_loss.backward()  # Backpropagate for policy loss
         torch.nn.utils.clip_grad_norm_(policy_net.parameters(), max_norm=1.0)
         policy_optimizer.step()
 
-        # Optimize value network
-        value_optimizer.zero_grad()
-        value_loss.backward()
-        torch.nn.utils.clip_grad_norm_(value_net.parameters(), max_norm=1.0)
-        value_optimizer.step()
+    # Optimize value network (critic)
+    value_optimizer.zero_grad()
+    value_loss.backward()  # Backpropagate for value loss
+    torch.nn.utils.clip_grad_norm_(value_net.parameters(), max_norm=1.0)
+    value_optimizer.step()
 
     # Print losses for debugging
     print(f"Policy Loss: {policy_loss.item():.6f}, Value Loss: {value_loss.item():.6f}")
@@ -197,9 +210,15 @@ def train_agents(num_agents, num_episodes, fixed_paths):
     value_net = ValueNetwork(state_size)
 
     # Lowered learning rates for stability
-    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.0001)
-    value_optimizer = optim.Adam(value_net.parameters(), lr=0.0001)
-    gamma = 0.99  # Discount factor
+    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.0000000000000000005)
+    value_optimizer = optim.Adam(value_net.parameters(), lr=0.000000000000000005)
+
+    # Initialize learning rate schedulers
+    policy_scheduler = torch.optim.lr_scheduler.StepLR(policy_optimizer, step_size=100, gamma=0.9)
+    value_scheduler = torch.optim.lr_scheduler.StepLR(value_optimizer, step_size=100, gamma=0.9)
+
+    gamma = 0.9  # Discount factor
+    lambda_ = 0.95  # GAE smoothing parameter
 
     agents_paths = [[] for _ in range(num_agents)]
     reward_history = []
@@ -240,7 +259,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                     next_pos = (agv_paths[agent_index][1] if len(agv_paths[agent_index]) > 1 else current_pos)
                     for i in range(len(visited_nodes)):
                         if i != agent_index and (next_pos == visited_nodes[i] or next_pos == visited_nodes2[i]):
-                            reward -= 10  # Penalty for causing a deadlock
+                            reward -= 5000  # Penalty for causing a deadlock
                             done = True
                             break
                     if not done:
@@ -248,12 +267,12 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         visited_nodes[agent_index] = next_pos
                         if len(agv_paths[agent_index]) > 1:
                             agv_paths[agent_index] = agv_paths[agent_index][1:]
-                            reward += 1  # Reward for moving to the next node
+                            reward += 10  # Reward for moving to the next node
                         else:
                             agv_paths[agent_index] = []
-                            reward += 2  # Reward for reaching the goal
+                            reward += 20  # Reward for reaching the goal
                             if all(not path for path in agv_paths):
-                                reward += 10  # Reward for reaching the goal
+                                reward += 1000  # Reward for reaching the goal
                                 done = True
                                 break
                 elif action == 0:
@@ -262,29 +281,18 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         next_pos = (agv_paths[agent_index][1] if len(agv_paths[agent_index]) > 1
                                     else current_pos)
                     for i in range(len(visited_nodes)):
-                        # print(i, "i")
-                        # print(agent_index, "j")
                         if i != agent_index and (next_pos != visited_nodes[i] and next_pos != visited_nodes2[i]):
-                            # print(agent_index, "agent",next_pos, "next_pos", visited_nodes, "visited_nodes[i]", visited_nodes2, "visited_nodes2[i]")
-                            reward -= 5  # Penalty for causing a deadlock
+                            reward -= 50  # Penalty for causing a deadlock
                         else:
-                            reward += 1  # Reward for moving to the next node
-                    """if len(agv_paths[agent_index]) >= 1:
-                        current_pos = agv_paths[agent_index][0]
-                        next_pos = agv_paths[agent_index][0]
-                        visited_nodes2[agent_index] = current_pos
-                        visited_nodes[agent_index] = next_pos"""
+                            reward += 20  # Reward for moving to the next node
                 if not all(not path for path in agv_paths):
                     reward -= 10  # Penalty for not reaching the goal
                 reward -= 1  # Default reward if no action taken
-                    #print(agv_paths[agent_index])
-                #reward -= 5 * len(agv_paths[agent_index])  # Penalize longer paths
 
                 # Record current position (if available) for visualization
                 if agv_paths[agent_index]:
                     agents_paths[agent_index].append(agv_paths[agent_index][0])
                 if done:
-                    #print("done1")
                     break
             log_probs.append(step_log_prob)
             rewards.append(reward)
@@ -301,10 +309,15 @@ def train_agents(num_agents, num_episodes, fixed_paths):
             state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())
 
         # Update policy and value networks using PPO
-        update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewards, log_probs, states, gamma)
+        discounted_rewards = compute_discounted_rewards(rewards, gamma)
+        update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewards, log_probs, states, gamma, lambda_, discounted_rewards)
 
         total_reward = sum(rewards)
         reward_history.append(total_reward)
+
+        # Step the learning rate schedulers
+        policy_scheduler.step()
+        value_scheduler.step()
 
         print(f"Episode {episode + 1}: Total Reward = {total_reward:.2f}")
 
@@ -387,7 +400,7 @@ def visualize_agents(agents_paths, G):
 # Main execution
 if __name__ == "__main__":
     num_agents = len(fixed_paths)
-    num_episodes = 300
+    num_episodes = 500
 
     # Train the agents
     agents_paths, G, trained_policy = train_agents(num_agents, num_episodes, fixed_paths)

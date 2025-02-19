@@ -39,13 +39,22 @@ class ValueNetwork(nn.Module):
     def __init__(self, state_size):
         super(ValueNetwork, self).__init__()
         self.fc1 = nn.Linear(state_size, 256)
+        self.ln1 = nn.LayerNorm(256, eps=1e-8)
         self.fc2 = nn.Linear(256, 128)
+        self.ln2 = nn.LayerNorm(128, eps=1e-8)
         self.fc3 = nn.Linear(128, 1)
+        self.dropout = nn.Dropout(p=0.3)
 
     def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        return self.fc3(x)
+        x = self.fc1(x)
+        x = self.ln1(x)
+        x = F.relu(x)
+        x = self.dropout(x)
+        x = self.fc2(x)
+        x = self.ln2(x)
+        x = F.relu(x)
+        x = self.fc3(x)
+        return x
 
 
 # Create a directed graph environment
@@ -124,7 +133,10 @@ def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewa
     discounted_rewards = torch.tensor(discounted_rewards, dtype=torch.float32)
 
     # Normalize rewards
-
+    if len(discounted_rewards) > 1:
+        discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / (discounted_rewards.std() + 1e-8)
+    else:
+        discounted_rewards = (discounted_rewards - discounted_rewards.mean())
     #discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / (discounted_rewards.std() + 1e-8)
 
     # Compute value loss
@@ -135,14 +147,17 @@ def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewa
 
     # Compute advantages
     advantages = discounted_rewards - values.detach()
-
+    if len(advantages) > 1:
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+    else:
+        advantages = (advantages - advantages.mean())
     #advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
     # Compute policy loss with entropy regularization
     policy_loss = -torch.stack([log_prob * advantage for log_prob, advantage in zip(log_probs, advantages)]).mean()
     #entropy = -(torch.stack(log_probs) * torch.stack(log_probs).exp()).mean()
     #policy_loss -= 0.01 * entropy  # Add entropy regularization
-
+    #print("policy_loss:", policy_loss, "value_loss:", value_loss)
     # Optimize policy network
     policy_optimizer.zero_grad()
     policy_loss.backward()
@@ -168,8 +183,12 @@ def train_agents(num_agents, num_episodes, fixed_paths):
     policy_net = PolicyNetwork(state_size, action_size)
     value_net = ValueNetwork(state_size)
     # Lowered learning rates for stability
-    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.005)
-    value_optimizer = optim.Adam(value_net.parameters(), lr=0.005)
+    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.00000000000000001)
+    value_optimizer = optim.Adam(value_net.parameters(), lr=0.00000000000000001)
+
+    # Initialize learning rate schedulers
+    #policy_scheduler = torch.optim.lr_scheduler.StepLR(policy_optimizer, step_size=150, gamma=1)
+    #value_scheduler = torch.optim.lr_scheduler.StepLR(value_optimizer, step_size=150, gamma=1)
     gamma = 0.9
 
     agents_paths = [[] for _ in range(num_agents)]
@@ -227,7 +246,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         #print(agent_index, "j")
                         if i != agent_index and (next_pos == visited_nodes[i] or next_pos == visited_nodes2[i]):
                             #print(agent_index, "agent",next_pos, "next_pos", visited_nodes, "visited_nodes[i]", visited_nodes2, "visited_nodes2[i]")
-                            reward -= 30000  # Penalty for causing a deadlock
+                            reward -= 500  # Penalty for causing a deadlock
                             done = True
                             break  # Exit the loop if the condition is met
                     if not done:
@@ -245,16 +264,16 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         if len(agv_paths[agent_index]) > 1:
                             agv_paths[agent_index] = agv_paths[agent_index][1:]
                             #print(agv_paths)
-                            reward += 1  # Reward for moving to the next node
+                            reward += 100  # Reward for moving to the next node
                             #print(agv_paths)
                         #print(agv_paths[agent_index])
                         else:
                             agv_paths[agent_index] = []
-                            reward += 50  # Reward for reaching the goal
+                            reward += 500  # Reward for reaching the goal
                             #print(agv_paths)
                             if all(not path for path in agv_paths):
                     #print(agv_paths)
-                                reward += 1000  # Reward for reaching the goal
+                                reward += 10000  # Reward for reaching the goal
                                 #print(agv_paths, "agv_paths")
                                 done = True
                                 break
@@ -268,15 +287,15 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         # print(agent_index, "j")
                         if i != agent_index and (next_pos != visited_nodes[i] and next_pos != visited_nodes2[i]):
                             # print(agent_index, "agent",next_pos, "next_pos", visited_nodes, "visited_nodes[i]", visited_nodes2, "visited_nodes2[i]")
-                            reward -= 50  # Penalty for causing a deadlock
+                            reward -= 100  # Penalty for causing a deadlock
                         else:
-                            reward += 5  # Reward for moving to the next node
+                            reward += 100  # Reward for moving to the next node
                     if len(agv_paths[agent_index]) >= 1:
                         current_pos = agv_paths[agent_index][0]
                         next_pos = agv_paths[agent_index][0]
                         visited_nodes2[agent_index] = current_pos
                         visited_nodes[agent_index] = next_pos
-                reward -= 5  # Default reward if no action taken
+                reward -= 10  # Default reward if no action taken
                     #print(agv_paths[agent_index])
                 #reward -= 1 * len(agv_paths[agent_index])  # Penalize longer paths
 
@@ -318,10 +337,13 @@ def train_agents(num_agents, num_episodes, fixed_paths):
         #print("State Matrix:", state_matrix)  # Debugging: Print state matrix
         #print(states)
         #print(rewards)
+        #rewards = (rewards - np.mean(rewards)) / (np.std(rewards) + 1e-8)
         update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewards, log_probs, states, gamma)
-
+        #policy_scheduler.step()
+        #value_scheduler.step()
         total_reward = sum(rewards)
         reward_history.append(total_reward)
+
         # Compute a simple discounted reward for logging
         discounted_rewards = []
         for t in range(len(rewards)):
@@ -411,7 +433,7 @@ def visualize_agents(agents_paths, G):
 # Main execution
 if __name__ == "__main__":
     num_agents = len(fixed_paths)
-    num_episodes = 300
+    num_episodes = 1000
 
     # Train the agents
     agents_paths, G, trained_policy = train_agents(num_agents, num_episodes, fixed_paths)
