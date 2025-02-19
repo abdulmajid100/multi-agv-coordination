@@ -170,7 +170,7 @@ def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewa
     torch.nn.utils.clip_grad_norm_(value_net.parameters(), max_norm=1.0)
     value_optimizer.step()
 
-    #print(f"Policy Loss: {policy_loss.item():.6f}, Value Loss: {value_loss.item():.6f}")
+    print(f"Policy Loss: {policy_loss.item():.6f}, Value Loss: {value_loss.item():.6f}")
 
 def init_weights(m):
     if isinstance(m, nn.Linear):
@@ -246,7 +246,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         #print(agent_index, "j")
                         if i != agent_index and (next_pos == visited_nodes[i] or next_pos == visited_nodes2[i]):
                             #print(agent_index, "agent",next_pos, "next_pos", visited_nodes, "visited_nodes[i]", visited_nodes2, "visited_nodes2[i]")
-                            reward -= 500  # Penalty for causing a deadlock
+                            reward -= 500000  # Penalty for causing a deadlock
                             done = True
                             break  # Exit the loop if the condition is met
                     if not done:
