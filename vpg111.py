@@ -165,7 +165,7 @@ def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewa
     advantages = []
     Gt = 0
     for delta in reversed(deltas):
-        Gt = delta + gamma * 0.9 * Gt
+        Gt = delta + gamma * 0.99 * Gt
         advantages.append(Gt)
 
     advantages = torch.tensor(advantages, dtype=torch.float32)
@@ -239,8 +239,8 @@ def train_agents(num_agents, num_episodes, fixed_paths):
     policy_net.apply(init_weights)
     value_net.apply(init_weights)
     # Lowered learning rates for stability
-    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.0001)
-    value_optimizer = optim.Adam(value_net.parameters(), lr=0.0001)
+    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.001)
+    value_optimizer = optim.Adam(value_net.parameters(), lr=0.001)
 
     # Initialize learning rate schedulers
     #policy_scheduler = torch.optim.lr_scheduler.StepLR(policy_optimizer, step_size=150, gamma=1)
@@ -343,9 +343,9 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         # print(agent_index, "j")
                         if i != agent_index and (next_pos != visited_nodes[i] and next_pos != visited_nodes2[i]):
                             # print(agent_index, "agent",next_pos, "next_pos", visited_nodes, "visited_nodes[i]", visited_nodes2, "visited_nodes2[i]")
-                            reward -= 5.0  # Penalty for causing a deadlock
+                            reward -= 10.0  # Penalty for causing a deadlock
                         else:
-                            reward += 1.0  # Reward for moving to the next node
+                            reward += 5.0  # Reward for moving to the next node
                     if len(agv_paths[agent_index]) >= 1:
                         current_pos = agv_paths[agent_index][0]
                         next_pos = agv_paths[agent_index][0]
@@ -490,7 +490,7 @@ def visualize_agents(agents_paths, G):
 # Main execution
 if __name__ == "__main__":
     num_agents = len(fixed_paths)
-    num_episodes = 300
+    num_episodes = 1000
 
     # Train the agents
     agents_paths, G, trained_policy = train_agents(num_agents, num_episodes, fixed_paths)
