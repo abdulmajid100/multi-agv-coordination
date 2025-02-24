@@ -138,6 +138,7 @@ def compute_gae(rewards, values, gamma, lambda_):
 
 def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewards, log_probs, states, gamma):
     # Compute discounted rewards
+    rewards.append(0)
     discounted_rewards = []
     Gt = 0
     for reward in reversed(rewards):
@@ -146,9 +147,29 @@ def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewa
 
     discounted_rewards = torch.tensor(discounted_rewards, dtype=torch.float32)
     discounted_rewards = reversed(discounted_rewards)
+    discounted_rewards = discounted_rewards[:-1]
     #print(discounted_rewards)
     #print(rewards)
+
+    values = torch.stack([value_net(state.float()) for state in states]).squeeze()
+    #print(values)
+    values1 = values.view(-1)
+    values = values1.detach().numpy()
+    values = np.append(values, 0)
+    #print(values)
+    deltas = rewards[:-1] + gamma * values[1:] - values[:-1]
+    #print(deltas, "delta")
+    #values = torch.cat((values, [0]))
     rewards = torch.tensor(rewards, dtype=torch.float32)
+    #print(rewards)
+    advantages = []
+    Gt = 0
+    for delta in reversed(deltas):
+        Gt = delta + gamma * 0.9 * Gt
+        advantages.append(Gt)
+
+    advantages = torch.tensor(advantages, dtype=torch.float32)
+    advantages = reversed(advantages)
     #print(discounted_rewards)
     """if len(discounted_rewards) > 1:
         discounted_rewards = reversed(discounted_rewards)"""
@@ -164,17 +185,18 @@ def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewa
     #print((states))
     #print(states[0])
     # Compute value loss
-    values = torch.stack([value_net(state.float()) for state in states]).squeeze()
+
     #print(values)
 
-    values = values.view(-1)  # Reshape if necessary
+      # Reshape if necessary
     discounted_rewards = discounted_rewards.view(-1)  # Ensure target is also reshaped
     #print(values[0])
-    value_loss = F.mse_loss(values, discounted_rewards)
+    value_loss = F.mse_loss(values1, discounted_rewards)
 
     # Compute advantages
     #advantages = compute_gae(rewards=rewards, values=values, gamma=gamma, lambda_=0.95)
-    advantages = discounted_rewards - values.detach()
+    #advantages = discounted_rewards - values.detach()
+    #advantages = rewards[-1:]
     if len(advantages) > 1:
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
     #advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
@@ -217,8 +239,8 @@ def train_agents(num_agents, num_episodes, fixed_paths):
     policy_net.apply(init_weights)
     value_net.apply(init_weights)
     # Lowered learning rates for stability
-    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.00001)
-    value_optimizer = optim.Adam(value_net.parameters(), lr=0.00001)
+    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.0001)
+    value_optimizer = optim.Adam(value_net.parameters(), lr=0.0001)
 
     # Initialize learning rate schedulers
     #policy_scheduler = torch.optim.lr_scheduler.StepLR(policy_optimizer, step_size=150, gamma=1)

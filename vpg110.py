@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import random
 import copy
-import scipy.signal
 
 # Define the Policy Network
 # Updated Policy Network with Layer Normalization
@@ -94,7 +93,7 @@ fixed_paths = [
 ]"""
 
 
-def select_actions(policy_net, state_matrix, num_agents, deterministic=False):
+def select_actions(policy_net, state_matrix, num_agents, deterministic=False, episode=None):
     if isinstance(state_matrix, np.ndarray):
         state = torch.FloatTensor(state_matrix.astype(np.float32)).unsqueeze(0)
     elif isinstance(state_matrix, torch.Tensor):
@@ -119,7 +118,11 @@ def select_actions(policy_net, state_matrix, num_agents, deterministic=False):
         action_index = torch.argmax(log_probabilities).item()
     else:
         # Sample an action based on the probabilities
-        action_index = np.random.choice(len(probabilities_np), p=probabilities_np)
+        epsilon = max(0.05, 1.0 - episode / (num_episodes // 2))  # Reduce epsilon linearly
+        if random.random() < epsilon:
+            action_index = random.randint(0, len(action_vectors) - 1)  # Random action
+        else:
+            action_index = np.random.choice(len(probabilities_np), p=probabilities_np)  # Policy-guided action
 
     log_prob = log_probabilities[action_index]  # Use log_softmax output directly
     action_vector = action_vectors[action_index % len(action_vectors)]
@@ -129,10 +132,10 @@ def select_actions(policy_net, state_matrix, num_agents, deterministic=False):
 def compute_gae(rewards, values, gamma, lambda_):
     advantages = []
     advantage = 0
-    for t in range(len(rewards)):
+    for t in reversed(range(len(rewards))):
         delta_t = rewards[t] + gamma * (values[t+1] if t < len(rewards) - 1 else 0) - values[t]
         advantage = delta_t + gamma * lambda_ * advantage
-        advantages.append(advantage)
+        advantages.insert(0, advantage)
     return torch.tensor(advantages, dtype=torch.float32)
 
 
@@ -142,41 +145,29 @@ def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewa
     Gt = 0
     for reward in reversed(rewards):
         Gt = reward + gamma * Gt
-        discounted_rewards.append(Gt)
-
+        discounted_rewards.insert(0, Gt)
     discounted_rewards = torch.tensor(discounted_rewards, dtype=torch.float32)
-    discounted_rewards = reversed(discounted_rewards)
-    #print(discounted_rewards)
-    #print(rewards)
-    rewards = torch.tensor(rewards, dtype=torch.float32)
-    #print(discounted_rewards)
-    """if len(discounted_rewards) > 1:
-        discounted_rewards = reversed(discounted_rewards)"""
-    #print(discounted_rewards)
-    #print(discounted_rewards[0])
-    #print(rewards)
+
     # Normalize rewards
-    if len(rewards) > 1:
-        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
     if len(discounted_rewards) > 1:
         discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / (discounted_rewards.std() + 1e-8)
+    else:
+        discounted_rewards = (discounted_rewards - discounted_rewards.mean())
     #discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / (discounted_rewards.std() + 1e-8)
-    #print((states))
-    #print(states[0])
+
     # Compute value loss
     values = torch.stack([value_net(state.float()) for state in states]).squeeze()
-    #print(values)
-
     values = values.view(-1)  # Reshape if necessary
     discounted_rewards = discounted_rewards.view(-1)  # Ensure target is also reshaped
-    #print(values[0])
     value_loss = F.mse_loss(values, discounted_rewards)
 
     # Compute advantages
-    #advantages = compute_gae(rewards=rewards, values=values, gamma=gamma, lambda_=0.95)
-    advantages = discounted_rewards - values.detach()
+    advantages = compute_gae(rewards=rewards, values=values, gamma=gamma, lambda_=0.95)
+
     if len(advantages) > 1:
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+    else:
+        advantages = (advantages - advantages.mean())
     #advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
     #print(f"Advantages: {advantages}")
 
@@ -184,7 +175,7 @@ def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewa
     # Compute policy loss with entropy regularization
     entropy = -(torch.stack(log_probs) * torch.stack(log_probs).exp()).mean()
     policy_loss = -torch.stack([log_prob * advantage for log_prob, advantage in zip(log_probs, advantages)]).mean()
-    policy_loss -= 0.1 * entropy  # Entropy regularization
+    policy_loss -= 0.001 * entropy  # Entropy regularization
 
     #entropy = -(torch.stack(log_probs) * torch.stack(log_probs).exp()).mean()
     #policy_loss -= 0.01 * entropy  # Add entropy regularization
@@ -213,12 +204,9 @@ def train_agents(num_agents, num_episodes, fixed_paths):
     action_size = 2 ** num_agents - 1  # For 3 agents, 7 joint actions
     policy_net = PolicyNetwork(state_size, action_size)
     value_net = ValueNetwork(state_size)
-
-    policy_net.apply(init_weights)
-    value_net.apply(init_weights)
     # Lowered learning rates for stability
-    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.00001)
-    value_optimizer = optim.Adam(value_net.parameters(), lr=0.00001)
+    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.001)
+    value_optimizer = optim.Adam(value_net.parameters(), lr=0.001)
 
     # Initialize learning rate schedulers
     #policy_scheduler = torch.optim.lr_scheduler.StepLR(policy_optimizer, step_size=150, gamma=1)
@@ -261,7 +249,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
 
                 #print("Selecting Actions")
                 #print(policy_net, state_matrix, num_agents)
-                action_vector, step_log_prob = select_actions(policy_net, state_matrix, num_agents)
+                action_vector, step_log_prob = select_actions(policy_net, state_matrix, num_agents, episode = episode)
                 #print("action selected")
             except ValueError as e:
                 print(f"ValueError in select_actions: {e}")
@@ -280,7 +268,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         #print(agent_index, "j")
                         if i != agent_index and (next_pos == visited_nodes[i] or next_pos == visited_nodes2[i]):
                             #print(agent_index, "agent",next_pos, "next_pos", visited_nodes, "visited_nodes[i]", visited_nodes2, "visited_nodes2[i]")
-                            reward -= 1000  # Penalty for causing a deadlock
+                            reward -= 10  # Penalty for causing a deadlock
                             done = True
                             break  # Exit the loop if the condition is met
                     if not done:
@@ -307,7 +295,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                             #print(agv_paths)
                             if all(not path for path in agv_paths):
                     #print(agv_paths)
-                                reward += 200.0  # Reward for reaching the goal
+                                reward += 100.0  # Reward for reaching the goal
                                 #print(agv_paths, "agv_paths")
                                 done = True
                                 break
@@ -321,7 +309,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         # print(agent_index, "j")
                         if i != agent_index and (next_pos != visited_nodes[i] and next_pos != visited_nodes2[i]):
                             # print(agent_index, "agent",next_pos, "next_pos", visited_nodes, "visited_nodes[i]", visited_nodes2, "visited_nodes2[i]")
-                            reward -= 5.0  # Penalty for causing a deadlock
+                            reward -= 2.0  # Penalty for causing a deadlock
                         else:
                             reward += 1.0  # Reward for moving to the next node
                     if len(agv_paths[agent_index]) >= 1:
@@ -361,8 +349,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
             state_matrix = np.zeros((num_agents, 30), dtype=np.float32)
             for agent_index, path in enumerate(agv_paths):
                 if path:
-                    for node in path:
-                        state_matrix[agent_index, node - 1] += 1
+                    state_matrix[agent_index, path[0] - 1] = 1.0
             state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())
 
 
@@ -468,7 +455,7 @@ def visualize_agents(agents_paths, G):
 # Main execution
 if __name__ == "__main__":
     num_agents = len(fixed_paths)
-    num_episodes = 300
+    num_episodes = 1000
 
     # Train the agents
     agents_paths, G, trained_policy = train_agents(num_agents, num_episodes, fixed_paths)
