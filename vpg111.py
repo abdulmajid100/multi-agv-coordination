@@ -206,7 +206,7 @@ def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewa
     # Compute policy loss with entropy regularization
     entropy = -(torch.stack(log_probs) * torch.stack(log_probs).exp()).mean()
     policy_loss = -torch.stack([log_prob * advantage for log_prob, advantage in zip(log_probs, advantages)]).mean()
-    #policy_loss -= 0.01 * entropy  # Entropy regularization
+    policy_loss -= 0.01 * entropy  # Entropy regularization
 
     #entropy = -(torch.stack(log_probs) * torch.stack(log_probs).exp()).mean()
     #policy_loss -= 0.01 * entropy  # Add entropy regularization
@@ -239,8 +239,8 @@ def train_agents(num_agents, num_episodes, fixed_paths):
     policy_net.apply(init_weights)
     value_net.apply(init_weights)
     # Lowered learning rates for stability
-    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.001)
-    value_optimizer = optim.Adam(value_net.parameters(), lr=0.001)
+    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.0001)
+    value_optimizer = optim.Adam(value_net.parameters(), lr=0.0001)
 
     # Initialize learning rate schedulers
     #policy_scheduler = torch.optim.lr_scheduler.StepLR(policy_optimizer, step_size=150, gamma=1)
@@ -302,7 +302,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         #print(agent_index, "j")
                         if i != agent_index and (next_pos == visited_nodes[i] or next_pos == visited_nodes2[i]):
                             #print(agent_index, "agent",next_pos, "next_pos", visited_nodes, "visited_nodes[i]", visited_nodes2, "visited_nodes2[i]")
-                            reward -= 2000  # Penalty for causing a deadlock
+                            reward -= 200.0  # Penalty for causing a deadlock
                             done = True
                             break  # Exit the loop if the condition is met
                     if not done:
@@ -320,16 +320,16 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         if len(agv_paths[agent_index]) > 1:
                             agv_paths[agent_index] = agv_paths[agent_index][1:]
                             #print(agv_paths)
-                            reward += 5.0  # Reward for moving to the next node
+                            reward += 10.0  # Reward for moving to the next node
                             #print(agv_paths)
                         #print(agv_paths[agent_index])
                         else:
                             agv_paths[agent_index] = []
-                            reward += 50.0  # Reward for reaching the goal
+                            reward += 100.0  # Reward for reaching the goal
                             #print(agv_paths)
                             if all(not path for path in agv_paths):
                     #print(agv_paths)
-                                reward += 2000.0  # Reward for reaching the goal
+                                reward += 500.0  # Reward for reaching the goal
                                 #print(agv_paths, "agv_paths")
                                 done = True
                                 break
@@ -345,7 +345,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                             # print(agent_index, "agent",next_pos, "next_pos", visited_nodes, "visited_nodes[i]", visited_nodes2, "visited_nodes2[i]")
                             reward -= 10.0  # Penalty for causing a deadlock
                         else:
-                            reward += 5.0  # Reward for moving to the next node
+                            reward += 10.0  # Reward for moving to the next node
                     if len(agv_paths[agent_index]) >= 1:
                         current_pos = agv_paths[agent_index][0]
                         next_pos = agv_paths[agent_index][0]
