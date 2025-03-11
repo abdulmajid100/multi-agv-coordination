@@ -1,0 +1,65 @@
+digraph {
+  node [label="N", fillcolor="#FFFFFF", fontcolor="#000000", style=filled];
+  edge [style="solid"];
+  graph [splines="true", overlap="false"];
+  subgraph cluster_2757726893456 {
+    graph [
+      style="invis"
+    ];
+    node_0
+      [
+        shape="ellipse"
+        label="P1\n{}"
+        tooltip="P1"
+        id="node_0"
+      ];
+    node_1
+      [
+        shape="ellipse"
+        label="P2\n{}"
+        tooltip="P2"
+        id="node_1"
+      ];
+    node_2
+      [
+        shape="ellipse"
+        label="P3\n{1}"
+        tooltip="P3"
+        id="node_2"
+      ];
+    node_3
+      [
+        shape="rectangle"
+        label="T1\nTrue"
+        tooltip="T1"
+        id="node_3"
+      ];
+    node_4
+      [
+        shape="rectangle"
+        label="T2\nTrue"
+        tooltip="T2"
+        id="node_4"
+      ];
+    node_0 -> node_3
+      [
+        arrowhead="normal"
+        label=" 1 "
+      ];
+    node_3 -> node_1
+      [
+        arrowhead="normal"
+        label=" 1 "
+      ];
+    node_1 -> node_4
+      [
+        arrowhead="normal"
+        label=" 1 "
+      ];
+    node_4 -> node_2
+      [
+        arrowhead="normal"
+        label=" 1 "
+      ];
+  }
+}
