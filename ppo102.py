@@ -14,25 +14,35 @@ import copy
 class PolicyNetwork(nn.Module):
     def __init__(self, state_size, num_actions):
         super(PolicyNetwork, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=1, kernel_size=(2, 3), stride=1, padding=(0, 1))
-        self.conv2 = nn.Conv2d(in_channels=1, out_channels=1, kernel_size=(2, 3), stride=1, padding=(0, 1))
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=(3, 3), stride=1, padding=1)
+        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=(3, 3), stride=1, padding=1)
+        self.conv3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(3, 3), stride=1, padding=1)
 
-        # Dynamically calculate the flattened size
-        conv_output_size = self._get_conv_output_size((1, 3, 30))  # Example input shape
-        self.fc1 = nn.Linear(conv_output_size, 128)
-        self.fc2 = nn.Linear(128, num_actions)
+        conv_output_size = self._get_conv_output_size((1, 3, 30))  # Adjust based on input shape
+        self.fc1 = nn.Linear(5760, 256)
+        self.fc2 = nn.Linear(256, num_actions)
 
     def _get_conv_output_size(self, shape):
         with torch.no_grad():
             x = torch.zeros(1, *shape)
             x = self.conv1(x)
+            #print(f"After conv1: {x.shape}")  # Debug print
             x = self.conv2(x)
+            #print(f"After conv2: {x.shape}")  # Debug print
+            x = self.conv3(x)
+            #print(f"After conv3: {x.shape}")  # Debug print
             return x.numel()
 
     def forward(self, x):
+        #print(x.shape, "state")
+        x = x.unsqueeze(1)  # Add a single channel dimension
+        #print(x.shape)
         x = F.relu(self.conv1(x))
+        #print(f"After conv1: {x.shape}")   # Debug print
         x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
         x = x.view(x.size(0), -1)  # Flatten the tensor
+        #print(f"After flattening: {x.shape}")
         x = F.relu(self.fc1(x))
         x = self.fc2(x)  # No softmax here
         return x
@@ -42,14 +52,30 @@ class PolicyNetwork(nn.Module):
 class ValueNetwork(nn.Module):
     def __init__(self, state_size):
         super(ValueNetwork, self).__init__()
-        self.fc1 = nn.Linear(state_size, 256)
-        self.fc2 = nn.Linear(256, 128)
-        self.fc3 = nn.Linear(128, 1)
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=(3, 3), stride=1, padding=1)
+        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=(3, 3), stride=1, padding=1)
+
+        # Dynamically calculate the flattened size
+        conv_output_size = self._get_conv_output_size((1, 3, 30))  # Example input shape
+        self.fc1 = nn.Linear(2880, 256)
+        self.fc2 = nn.Linear(256, 1)
+
+    def _get_conv_output_size(self, shape):
+        with torch.no_grad():
+            x = torch.zeros(1, *shape)
+            x = self.conv1(x)
+            x = self.conv2(x)
+            return x.numel()
 
     def forward(self, x):
+        x = x.unsqueeze(1)
+        x = F.relu(self.conv1(x))
+        #print(x.shape)
+        x = F.relu(self.conv2(x))
+        x = x.view(x.size(0), -1)  # Flatten the tensor
         x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        return self.fc3(x)
+        x = self.fc2(x)  # No softmax here
+        return x
 
 
 # Create a directed graph environment
@@ -121,7 +147,7 @@ def select_actions(policy_net, state_matrix, num_agents, deterministic=False):
     return action_vector, log_prob
 
 
-def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewards, log_probs, states, gamma, ppo_epochs=4, epsilon=0.2):
+def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewards, log_probs, states, gamma, ppo_epochs=10, epsilon=0.2):
     # Compute discounted rewards
     discounted_rewards = []
     Gt = 0
@@ -129,18 +155,20 @@ def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewa
         Gt = reward + gamma * Gt
         discounted_rewards.insert(0, Gt)
     discounted_rewards = torch.tensor(discounted_rewards, dtype=torch.float32)
+    #print(rewards)
+    #print(discounted_rewards)
 
     # Normalize rewards (optional, improves stability)
     # Normalize rewards only if there is more than one element
     if len(discounted_rewards) > 1:
         discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / (discounted_rewards.std() + 1e-8)
     else:
-        discounted_rewards = discounted_rewards  # No normalization needed for a single element
+        discounted_rewards = (discounted_rewards - discounted_rewards.mean())  # No normalization needed for a single element
 
     # Perform multiple PPO updates
     for _ in range(ppo_epochs):
         # Recompute values for states during each epoch
-        values = torch.stack([value_net(state.view(-1).float()) for state in states]).squeeze()
+        values = torch.stack([value_net(state.unsqueeze(0)) for state in states]).squeeze()
         values = values.view(-1)  # Reshape if necessary
         discounted_rewards = discounted_rewards.view(-1)  # Ensure target is also reshaped
 
@@ -149,7 +177,7 @@ def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewa
         if len(advantages) > 1:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)   # Normalize advantages
         else:
-            advantages = advantages
+            advantages = (advantages - advantages.mean())
         #advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)  # Normalize advantages
 
         # Recompute log probabilities for the current policy
@@ -208,9 +236,9 @@ def train_agents(num_agents, num_episodes, fixed_paths):
     value_net = ValueNetwork(state_size)
 
     # Lowered learning rates for stability
-    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.0000000000000005)
-    value_optimizer = optim.Adam(value_net.parameters(), lr=0.000000000000005)
-    gamma = 0.9  # Discount factor
+    policy_optimizer = optim.Adam(policy_net.parameters(), lr=0.0000005)
+    value_optimizer = optim.Adam(value_net.parameters(), lr=0.0000005)
+    gamma = 0.99  # Discount factor
 
     agents_paths = [[] for _ in range(num_agents)]
     reward_history = []
@@ -245,7 +273,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                 return agents_paths, G, policy_net
 
             # Process each agent’s decision
-            for agent_index, action in enumerate(reversed(action_vector)):
+            for agent_index, action in enumerate(action_vector):
                 if action == 1 and agv_paths[agent_index]:
                     current_pos = agv_paths[agent_index][0]
                     next_pos = (agv_paths[agent_index][1] if len(agv_paths[agent_index]) > 1 else current_pos)
@@ -259,12 +287,12 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         visited_nodes[agent_index] = next_pos
                         if len(agv_paths[agent_index]) > 1:
                             agv_paths[agent_index] = agv_paths[agent_index][1:]
-                            reward += 10  # Reward for moving to the next node
+                            reward += 50  # Reward for moving to the next node
                         else:
                             agv_paths[agent_index] = []
-                            reward += 20  # Reward for reaching the goal
+                            reward += 500  # Reward for reaching the goal
                             if all(not path for path in agv_paths):
-                                reward += 500  # Reward for reaching the goal
+                                reward += 50000  # Reward for reaching the goal
                                 done = True
                                 break
                 elif action == 0:
@@ -277,17 +305,17 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         # print(agent_index, "j")
                         if i != agent_index and (next_pos != visited_nodes[i] and next_pos != visited_nodes2[i]):
                             # print(agent_index, "agent",next_pos, "next_pos", visited_nodes, "visited_nodes[i]", visited_nodes2, "visited_nodes2[i]")
-                            reward -= 5  # Penalty for causing a deadlock
+                            reward -= 50  # Penalty for causing a deadlock
                         else:
-                            reward += 1  # Reward for moving to the next node
+                            reward += 50  # Reward for moving to the next node
                     """if len(agv_paths[agent_index]) >= 1:
                         current_pos = agv_paths[agent_index][0]
                         next_pos = agv_paths[agent_index][0]
                         visited_nodes2[agent_index] = current_pos
                         visited_nodes[agent_index] = next_pos"""
-                if not all(not path for path in agv_paths):
+                """if not all(not path for path in agv_paths):
                     reward -= 10  # Penalty for not reaching the goal
-                reward -= 1  # Default reward if no action taken
+                reward -= 1  # Default reward if no action taken"""
                     #print(agv_paths[agent_index])
                 #reward -= 5 * len(agv_paths[agent_index])  # Penalize longer paths
 
@@ -398,7 +426,7 @@ def visualize_agents(agents_paths, G):
 # Main execution
 if __name__ == "__main__":
     num_agents = len(fixed_paths)
-    num_episodes = 300
+    num_episodes = 100
 
     # Train the agents
     agents_paths, G, trained_policy = train_agents(num_agents, num_episodes, fixed_paths)

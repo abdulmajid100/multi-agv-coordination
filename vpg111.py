@@ -9,30 +9,40 @@ import matplotlib.animation as animation
 import random
 import copy
 import scipy.signal
-
-# Define the Policy Network
-# Updated Policy Network with Layer Normalization
+# Custom Swish activation function
 class PolicyNetwork(nn.Module):
     def __init__(self, state_size, num_actions):
         super(PolicyNetwork, self).__init__()
-        self.fc1 = nn.Linear(state_size, 256)
-        self.ln1 = nn.LayerNorm(256, eps=1e-8)
-        self.fc2 = nn.Linear(256, 128)
-        self.ln2 = nn.LayerNorm(128, eps=1e-8)
-        self.fc3 = nn.Linear(128, num_actions)
-        self.act = nn.LeakyReLU(negative_slope=0.01)
-        self.dropout = nn.Dropout(p=0.3)
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=(3, 3), stride=1, padding=1)
+        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=(3, 3), stride=1, padding=1)
+        self.conv3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(3, 3), stride=1, padding=1)
+
+        conv_output_size = self._get_conv_output_size((1, 3, 30))  # Adjust based on input shape
+        self.fc1 = nn.Linear(5760, 256)
+        self.fc2 = nn.Linear(256, num_actions)
+
+    def _get_conv_output_size(self, shape):
+        with torch.no_grad():
+            x = torch.zeros(1, *shape)
+            x = self.conv1(x)
+            #print(f"After conv1: {x.shape}")  # Debug print
+            x = self.conv2(x)
+            #print(f"After conv2: {x.shape}")  # Debug print
+            x = self.conv3(x)
+            #print(f"After conv3: {x.shape}")  # Debug print
+            return x.numel()
 
     def forward(self, x):
-        x = self.fc1(x)
-        x = self.ln1(x)
-        x = self.act(x)
-        x = self.dropout(x)
-        x = self.fc2(x)
-        x = self.ln2(x)
-        x = self.act(x)
-        x = self.fc3(x)
-        x = F.log_softmax(x, dim=-1)
+        #print(x.shape, "state")
+        x = x.unsqueeze(1)  # Add a single channel dimension
+        x = F.relu(self.conv1(x))
+        #print(f"After conv1: {x.shape}")   # Debug print
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        x = x.view(x.size(0), -1)  # Flatten the tensor
+        #print(f"After flattening: {x.shape}")
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)  # No softmax here
         return x
 
 
@@ -40,23 +50,30 @@ class PolicyNetwork(nn.Module):
 class ValueNetwork(nn.Module):
     def __init__(self, state_size):
         super(ValueNetwork, self).__init__()
-        self.fc1 = nn.Linear(state_size, 256)
-        self.ln1 = nn.LayerNorm(256, eps=1e-8)
-        self.fc2 = nn.Linear(256, 128)
-        self.ln2 = nn.LayerNorm(128, eps=1e-8)
-        self.fc3 = nn.Linear(128, 1)
-        self.act = nn.LeakyReLU(negative_slope=0.01)
-        self.dropout = nn.Dropout(p=0.3)
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=(3, 3), stride=1, padding=1)
+        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=(3, 3), stride=1, padding=1)
+
+        # Dynamically calculate the flattened size
+        conv_output_size = self._get_conv_output_size((1, 3, 30))  # Example input shape
+        self.fc1 = nn.Linear(2880, 256)
+        self.fc2 = nn.Linear(256, 1)
+
+    def _get_conv_output_size(self, shape):
+        with torch.no_grad():
+            x = torch.zeros(1, *shape)
+            x = self.conv1(x)
+            x = self.conv2(x)
+            return x.numel()
 
     def forward(self, x):
-        x = self.fc1(x)
-        x = self.ln1(x)
-        x = self.act(x)
-        x = self.dropout(x)
-        x = self.fc2(x)
-        x = self.ln2(x)
-        x = self.act(x)
-        x = self.fc3(x)
+        x = x.unsqueeze(1)
+        #print(x.shape)
+        x = F.relu(self.conv1(x))
+        #print(x.shape)
+        x = F.relu(self.conv2(x))
+        x = x.view(x.size(0), -1)  # Flatten the tensor
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)  # No softmax here
         return x
 
 
@@ -107,8 +124,10 @@ def select_actions(policy_net, state_matrix, num_agents, deterministic=False):
     action_vectors = [list(map(int, bin(i)[2:].zfill(num_agents))) for i in range(1, num_actions + 1)]
 
     # Get action log probabilities
-    log_probabilities = policy_net(state).squeeze(0)  # Output from log_softmax
-    probabilities = torch.exp(log_probabilities)  # To get actual probabilities if needed
+    logits = policy_net(state).squeeze(0)  # Output from log_softmax
+    probabilities = F.softmax(logits, dim=-1)
+    probabilities = probabilities + 1e-8
+    #probabilities = torch.exp(log_probabilities)  # To get actual probabilities if needed
 
     probabilities_np = probabilities.detach().numpy()
     if np.any(np.isnan(probabilities_np)):
@@ -116,12 +135,12 @@ def select_actions(policy_net, state_matrix, num_agents, deterministic=False):
 
     if deterministic:
         # Select the action with the highest probability
-        action_index = torch.argmax(log_probabilities).item()
+        action_index = np.argmax(probabilities_np)
     else:
         # Sample an action based on the probabilities
         action_index = np.random.choice(len(probabilities_np), p=probabilities_np)
 
-    log_prob = log_probabilities[action_index]  # Use log_softmax output directly
+    log_prob = torch.log(probabilities[action_index])
     action_vector = action_vectors[action_index % len(action_vectors)]
     return action_vector, log_prob
 
@@ -151,7 +170,7 @@ def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewa
     #print(discounted_rewards)
     #print(rewards)
 
-    values = torch.stack([value_net(state.float()) for state in states]).squeeze()
+    values = torch.stack([value_net(state.unsqueeze(0)) for state in states]).squeeze()
     #print(values)
     values1 = values.view(-1)
     values = values1.detach().numpy()
@@ -206,7 +225,7 @@ def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewa
     # Compute policy loss with entropy regularization
     entropy = -(torch.stack(log_probs) * torch.stack(log_probs).exp()).mean()
     policy_loss = -torch.stack([log_prob * advantage for log_prob, advantage in zip(log_probs, advantages)]).mean()
-    #policy_loss -= 0.01 * entropy  # Entropy regularization
+    policy_loss -= 0.05 * entropy  # Entropy regularization
 
     #entropy = -(torch.stack(log_probs) * torch.stack(log_probs).exp()).mean()
     #policy_loss -= 0.01 * entropy  # Add entropy regularization
@@ -214,13 +233,13 @@ def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewa
     # Optimize policy network
     policy_optimizer.zero_grad()
     policy_loss.backward()
-    torch.nn.utils.clip_grad_norm_(policy_net.parameters(), max_norm=1.0)
+    torch.nn.utils.clip_grad_norm_(policy_net.parameters(), max_norm=0.5)
     policy_optimizer.step()
 
     # Optimize value network
     value_optimizer.zero_grad()
     value_loss.backward()
-    torch.nn.utils.clip_grad_norm_(value_net.parameters(), max_norm=1.0)
+    torch.nn.utils.clip_grad_norm_(value_net.parameters(), max_norm=0.5)
     value_optimizer.step()
 
     print(f"Policy Loss: {policy_loss.item():.6f}, Value Loss: {value_loss.item():.6f}")
@@ -273,7 +292,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
             if path:
                 for node in path:
                     state_matrix[agent_index, node - 1] += 1
-        state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())
+        #state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())
         #print(agv_paths)
         done = False
         reward = 0
@@ -290,7 +309,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                 return agents_paths, G, policy_net
 
             # Process each agent’s decision
-            for agent_index, action in enumerate(reversed(action_vector)):
+            for agent_index, action in enumerate(action_vector):
                 #print(agent_index, "agent_index")
                 if action == 1 and agv_paths[agent_index]:
                     #print(action_vector, agent_index)
@@ -302,7 +321,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         #print(agent_index, "j")
                         if i != agent_index and (next_pos == visited_nodes[i] or next_pos == visited_nodes2[i]):
                             #print(agent_index, "agent",next_pos, "next_pos", visited_nodes, "visited_nodes[i]", visited_nodes2, "visited_nodes2[i]")
-                            reward -= 2000  # Penalty for causing a deadlock
+                            reward -= 10  # Penalty for causing a deadlock
                             done = True
                             break  # Exit the loop if the condition is met
                     if not done:
@@ -320,16 +339,16 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         if len(agv_paths[agent_index]) > 1:
                             agv_paths[agent_index] = agv_paths[agent_index][1:]
                             #print(agv_paths)
-                            reward += 5.0  # Reward for moving to the next node
+                            reward += 1.0  # Reward for moving to the next node
                             #print(agv_paths)
                         #print(agv_paths[agent_index])
                         else:
                             agv_paths[agent_index] = []
-                            reward += 50.0  # Reward for reaching the goal
+                            reward += 2.0  # Reward for reaching the goal
                             #print(agv_paths)
                             if all(not path for path in agv_paths):
                     #print(agv_paths)
-                                reward += 2000.0  # Reward for reaching the goal
+                                reward += 10.0  # Reward for reaching the goal
                                 #print(agv_paths, "agv_paths")
                                 done = True
                                 break
@@ -343,15 +362,15 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         # print(agent_index, "j")
                         if i != agent_index and (next_pos != visited_nodes[i] and next_pos != visited_nodes2[i]):
                             # print(agent_index, "agent",next_pos, "next_pos", visited_nodes, "visited_nodes[i]", visited_nodes2, "visited_nodes2[i]")
-                            reward -= 10.0  # Penalty for causing a deadlock
+                            reward -= 1.0  # Penalty for causing a deadlock
                         else:
-                            reward += 5.0  # Reward for moving to the next node
+                            reward += 1.0  # Reward for moving to the next node
                     if len(agv_paths[agent_index]) >= 1:
                         current_pos = agv_paths[agent_index][0]
                         next_pos = agv_paths[agent_index][0]
                         visited_nodes2[agent_index] = current_pos
                         visited_nodes[agent_index] = next_pos
-                #reward -= 0.1  # Default reward if no action taken
+                #reward -= 1000  # Default reward if no action taken
                     #print(agv_paths[agent_index])
                 #reward -= 1 * len(agv_paths[agent_index])  # Penalize longer paths
 
@@ -364,11 +383,13 @@ def train_agents(num_agents, num_episodes, fixed_paths):
 
 
             #reward -= step
-
+            if step == 99 and not all(not path for path in agv_paths):
+                print("happened")
+                reward -= 10  # Penalty for not reaching the goal
             log_probs.append(step_log_prob)
             rewards.append(reward)
-            states.append(state_matrix.clone())
-            #print(len(rewards))
+            states.append(state_matrix.clone() if isinstance(state_matrix, torch.Tensor) else torch.from_numpy(
+                state_matrix).clone())            #print(len(rewards))
             #print(len(states))
             #print(states, "states")
 
@@ -385,7 +406,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                 if path:
                     for node in path:
                         state_matrix[agent_index, node - 1] += 1
-            state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())
+            #state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())
 
 
         #print(states)
@@ -435,7 +456,7 @@ def test_policy(policy_net, num_agents, fixed_paths, num_test_episodes=5):
             if path:
                 for node in path:
                     state_matrix[agent_index, node - 1] += 1
-        state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())
+        #state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())
 
         for step in range(100):
             action_vector, _ = select_actions(policy_net, state_matrix, num_agents, deterministic=True)
@@ -451,7 +472,7 @@ def test_policy(policy_net, num_agents, fixed_paths, num_test_episodes=5):
             for agent_index, path in enumerate(agv_paths):
                 if path:
                     state_matrix[agent_index, path[0] - 1] = 1.0
-            state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())
+            #state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())
         test_paths.append(episode_paths)
         #print(episode_paths)
     return test_paths
@@ -490,7 +511,7 @@ def visualize_agents(agents_paths, G):
 # Main execution
 if __name__ == "__main__":
     num_agents = len(fixed_paths)
-    num_episodes = 300
+    num_episodes = 100
 
     # Train the agents
     agents_paths, G, trained_policy = train_agents(num_agents, num_episodes, fixed_paths)

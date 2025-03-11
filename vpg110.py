@@ -82,9 +82,9 @@ def create_graph():
 
 # Define fixed paths for each AGV
 fixed_paths = [
-    [1, 4, 11, 12, 22],
-    [2, 4, 11, 12, 13, 14, 15, 25],
-    [26, 16, 17, 18, 28]
+    [14, 15, 16, 26, 26, 16, 15, 14, 13, 12, 11, 4, 5, 4, 6],
+    [2, 4, 11, 12, 13, 14, 15, 16, 17, 18, 28],
+    [28, 18, 17, 16, 26]
 ]
 """fixed_paths = [
     [9, 16, 15, 25],
@@ -268,7 +268,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         #print(agent_index, "j")
                         if i != agent_index and (next_pos == visited_nodes[i] or next_pos == visited_nodes2[i]):
                             #print(agent_index, "agent",next_pos, "next_pos", visited_nodes, "visited_nodes[i]", visited_nodes2, "visited_nodes2[i]")
-                            reward -= 10  # Penalty for causing a deadlock
+                            reward -= 1000  # Penalty for causing a deadlock
                             done = True
                             break  # Exit the loop if the condition is met
                     if not done:

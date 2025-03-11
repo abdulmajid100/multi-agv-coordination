@@ -28,19 +28,18 @@ agv_tasks = {
         [20, 10, 11, 4, 1]
     ],
     'AGV2': [
-        [12, 13, 14, 15, 25],
-        [25, 15, 14, 13, 12, 11, 4, 5, 4, 6],
+        [12, 13, 14, 24],
+        [24, 14, 13, 12, 11, 4, 5, 4, 6],
         [6, 4, 11, 12, 13, 14, 15, 25],
         [25, 15, 14, 13, 12, 11, 4, 2]
     ],
     'AGV3': [
-        [18, 19, 29, 19, 18, 17, 16, 15, 14, 13, 12, 11, 4, 5, 4, 6],
         [6, 4, 11, 12, 13, 14, 15, 16, 17, 18, 19, 29],
         [29, 19, 18, 17, 16, 15, 14, 13, 12, 11, 4, 3]
     ],
     'GEN': [
-        [9, 16, 15, 25],
-        [25, 15, 16, 9]
+        [9, 16, 15, 14, 24],
+        [24, 14, 15, 16, 9]
     ]
 }
 
@@ -52,6 +51,57 @@ for agv, tasks in agv_tasks.items():
     if tasks and tasks[0]:  # Check if there are tasks and nodes in the first task
         starting_node = tasks[0][0]
         resource_states[starting_node] = agv
+
+
+def can_move_to_next(agent, current_position, next_position, shared_nodes, agent_positions):
+    """
+    Determines if an agent can move to the next position based on shared node conditions.
+
+    Parameters:
+    - agent: The agent trying to move.
+    - current_position: Current position of the agent.
+    - next_position: Position the agent wants to move to.
+    - shared_nodes: List of nodes shared by multiple agents.
+    - agent_positions: Dictionary tracking current positions of all agents.
+
+    Returns:
+    - True if the agent can move, False otherwise.
+    """
+    # Check if the next position is a shared node
+    if next_position in shared_nodes:
+        # Identify the intersecting 3-way node (if it exists)
+        intersecting_node = find_intersecting_node(shared_nodes)
+
+        # If this is a critical shared node, check other agents
+        if intersecting_node:
+            # Count agents already in the previous shared nodes
+            occupied_shared_nodes = [node for node, pos in agent_positions.items() if pos in shared_nodes]
+
+            if len(occupied_shared_nodes) >= 2:
+                # Deadlock prevention: Block any additional agent
+                print(f"Agent {agent} is blocked from moving to {next_position} to prevent deadlock.")
+                return False
+
+    # If no conditions block the movement, allow the agent to move
+    return True
+
+
+def find_intersecting_node(shared_nodes):
+    """
+    Identify the intersection node (3-way node) in shared nodes.
+
+    Parameters:
+    - shared_nodes: List of shared nodes.
+
+    Returns:
+    - The intersecting node or None if not found.
+    """
+    # Example placeholder: Find the node with more than 2 connections (degree > 2)
+    for node in shared_nodes:
+        if G.degree[node] > 2:  # Assuming G is your graph
+            return node
+    return None
+
 
 def calculate_shared_nodes():
     for agv, tasks in agv_tasks.items():
@@ -138,12 +188,13 @@ def update(frame):
                         shared_nodes_with_others[other_agv] = list(shared_nodes)
 
 
+
                     else:
                         current_task = tasks[0]
                         other_current_task = agv_tasks[other_agv][0]
                         shared_nodes = set(current_task) & set(other_current_task)
                         shared_nodes_with_others[other_agv] = list(shared_nodes)
-
+                    print(shared_nodes_with_others, "shared nodes")
             current_node = tasks[0][0]
             if len(tasks[0]) > 1:
                 next_node = tasks[0][1]
