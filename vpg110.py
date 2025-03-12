@@ -82,9 +82,9 @@ def create_graph():
 
 # Define fixed paths for each AGV
 fixed_paths = [
-    [14, 15, 16, 26, 26, 16, 15, 14, 13, 12, 11, 4, 5, 4, 6],
-    [2, 4, 11, 12, 13, 14, 15, 16, 17, 18, 28],
-    [28, 18, 17, 16, 26]
+    [1, 4, 11, 12, 22],
+    [2, 4, 11, 12, 13, 14, 15, 25],
+    [26, 16, 17, 18, 28]
 ]
 """fixed_paths = [
     [9, 16, 15, 25],
@@ -455,7 +455,7 @@ def visualize_agents(agents_paths, G):
 # Main execution
 if __name__ == "__main__":
     num_agents = len(fixed_paths)
-    num_episodes = 1000
+    num_episodes = 300
 
     # Train the agents
     agents_paths, G, trained_policy = train_agents(num_agents, num_episodes, fixed_paths)

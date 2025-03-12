@@ -233,13 +233,13 @@ def update_policy(policy_net, value_net, policy_optimizer, value_optimizer, rewa
     # Optimize policy network
     policy_optimizer.zero_grad()
     policy_loss.backward()
-    torch.nn.utils.clip_grad_norm_(policy_net.parameters(), max_norm=0.5)
+    torch.nn.utils.clip_grad_norm_(policy_net.parameters(), max_norm=1.0)
     policy_optimizer.step()
 
     # Optimize value network
     value_optimizer.zero_grad()
     value_loss.backward()
-    torch.nn.utils.clip_grad_norm_(value_net.parameters(), max_norm=0.5)
+    torch.nn.utils.clip_grad_norm_(value_net.parameters(), max_norm=1.0)
     value_optimizer.step()
 
     print(f"Policy Loss: {policy_loss.item():.6f}, Value Loss: {value_loss.item():.6f}")
@@ -292,6 +292,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
             if path:
                 for node in path:
                     state_matrix[agent_index, node - 1] += 1
+        state_matrix = state_matrix / state_matrix.sum() if state_matrix.sum() != 0 else state_matrix
         #state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())
         #print(agv_paths)
         done = False
@@ -321,7 +322,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         #print(agent_index, "j")
                         if i != agent_index and (next_pos == visited_nodes[i] or next_pos == visited_nodes2[i]):
                             #print(agent_index, "agent",next_pos, "next_pos", visited_nodes, "visited_nodes[i]", visited_nodes2, "visited_nodes2[i]")
-                            reward -= 10  # Penalty for causing a deadlock
+                            reward -= 100  # Penalty for causing a deadlock
                             done = True
                             break  # Exit the loop if the condition is met
                     if not done:
@@ -339,16 +340,16 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         if len(agv_paths[agent_index]) > 1:
                             agv_paths[agent_index] = agv_paths[agent_index][1:]
                             #print(agv_paths)
-                            reward += 1.0  # Reward for moving to the next node
+                            reward += 50.0  # Reward for moving to the next node
                             #print(agv_paths)
                         #print(agv_paths[agent_index])
                         else:
                             agv_paths[agent_index] = []
-                            reward += 2.0  # Reward for reaching the goal
+                            reward += 100.0  # Reward for reaching the goal
                             #print(agv_paths)
                             if all(not path for path in agv_paths):
                     #print(agv_paths)
-                                reward += 10.0  # Reward for reaching the goal
+                                reward += 200.0  # Reward for reaching the goal
                                 #print(agv_paths, "agv_paths")
                                 done = True
                                 break
@@ -362,9 +363,9 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                         # print(agent_index, "j")
                         if i != agent_index and (next_pos != visited_nodes[i] and next_pos != visited_nodes2[i]):
                             # print(agent_index, "agent",next_pos, "next_pos", visited_nodes, "visited_nodes[i]", visited_nodes2, "visited_nodes2[i]")
-                            reward -= 1.0  # Penalty for causing a deadlock
+                            reward -= 50.0  # Penalty for causing a deadlock
                         else:
-                            reward += 1.0  # Reward for moving to the next node
+                            reward += 50.0  # Reward for moving to the next node
                     if len(agv_paths[agent_index]) >= 1:
                         current_pos = agv_paths[agent_index][0]
                         next_pos = agv_paths[agent_index][0]
@@ -385,7 +386,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
             #reward -= step
             if step == 99 and not all(not path for path in agv_paths):
                 print("happened")
-                reward -= 10  # Penalty for not reaching the goal
+                reward -= 1000  # Penalty for not reaching the goal
             log_probs.append(step_log_prob)
             rewards.append(reward)
             states.append(state_matrix.clone() if isinstance(state_matrix, torch.Tensor) else torch.from_numpy(
@@ -406,6 +407,7 @@ def train_agents(num_agents, num_episodes, fixed_paths):
                 if path:
                     for node in path:
                         state_matrix[agent_index, node - 1] += 1
+            state_matrix = state_matrix / state_matrix.sum() if state_matrix.sum() != 0 else state_matrix
             #state_matrix = torch.flatten(torch.from_numpy(state_matrix).float())
 
 
