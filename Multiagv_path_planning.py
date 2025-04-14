@@ -4,11 +4,11 @@ from grid_env_c import GridEnv
 
 # Q-learning parameters
 alpha = 0.05  # Learning rate
-gamma = 0.9  # Discount factor
+gamma = 0.99  # Discount factor
 epsilon_start = 1.0  # Initial exploration rate
-epsilon_min = 0.01  # Minimum exploration rate
-epsilon_decay = 0.9993  # Decay rate for epsilon
-num_episodes = 8000  # Number of episodes
+epsilon_min = 0.2  # Minimum exploration rate
+epsilon_decay = 0.9973  # Decay rate for epsilon
+num_episodes = 2000  # Number of episodes
 alpha_start = 1
 alpha_decay = 0.01
 
@@ -96,7 +96,7 @@ def main():
                  (7, 0), (7, 1), (7, 2), (7, 3), (7, 4), (7, 6), (7, 7), (7, 8), (7, 9),
                  (8, 0), (8, 1), (8, 2), (8, 3), (8, 4), (8, 6), (8, 7), (8, 8), (8, 9),
                  (9, 0), (9, 1), (9, 2), (9, 3), (9, 4), (9, 6), (9, 7), (9, 8), (9, 9)]
-    goals = [(0, 5), (9, 5), (5, 0)]
+    goals = [(0, 5), (9, 5), (5, 9)]
     initial_positions = [(9, 5), (5, 9), (5, 3)]
 
     env = GridEnv(grid_size, num_agents, obstacles, goals, initial_positions)

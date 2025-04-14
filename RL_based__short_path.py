@@ -94,7 +94,7 @@ def main():
                  (5, 1), (5, 2), (5, 3), (5, 4), (5, 5), (5, 6), (5, 7),
                  (7, 1), (7, 2), (7, 3), (7, 4), (7, 5), (7, 6), (7, 7)]
     goals = [(2, 6)]
-    initial_positions = [(6, 2)]
+    initial_positions = [(5, 8)]
 
     env = GridEnv(grid_size, num_agents, obstacles, goals, initial_positions)
     q_tables = q_learning(env, num_episodes)
