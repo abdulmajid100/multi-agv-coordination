@@ -83,7 +83,7 @@ def main():
                  ]
     goals = []
     dirt_density = 0.2  # Adjust as needed
-    initial_positions = [(6, 0)]
+    initial_positions = [(6, 6)]
 
     env = GridEnv(grid_size, num_agents, obstacles, goals, dirt_density, initial_positions)
     q_tables = q_learning(env, num_episodes)
