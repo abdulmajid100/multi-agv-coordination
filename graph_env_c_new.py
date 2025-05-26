@@ -21,7 +21,6 @@ class GraphEnv:
         self.num_agents = num_agents
         self.goals = goals
         self.initial_positions = initial_positions
-        self.next_agents = []
 
         # Precompute shortest path distances for reward shaping
         self.shortest_distances = {}
@@ -34,10 +33,14 @@ class GraphEnv:
         """Reset the environment to its initial state."""
         if self.initial_positions is None:
             self.agents = [self._get_random_position() for _ in range(self.num_agents)]
+            #print(self.agents)
         else:
             self.agents = self._validate_initial_positions(self.initial_positions)
+            #print(self.agents)
         self.done = [False] * self.num_agents
         self.steps = 0
+        # Initialize previous positions as None to indicate no previous position yet
+        self.previous_positions = [None] * self.num_agents
         return np.array(self.agents)
 
     def _validate_initial_positions(self, positions):
@@ -62,40 +65,44 @@ class GraphEnv:
         rewards = np.zeros(self.num_agents)
         collisions = [False] * self.num_agents
 
-        if not self.next_agents:  # If next_agents is empty, initialize it
-            self.next_agents = self.agents.copy()
+        # Initialize next_agents as a copy of current agents
+        next_agents = self.agents.copy()
 
         # Compute next positions based on actions
-        next_agents = []
+        proposed_positions = []
         for agent_idx, (agent, action) in enumerate(zip(self.agents, actions)):
-            next_agents.append(self._apply_action(agent, action, agent_idx))
+            proposed_positions.append(self._apply_action(agent, action, agent_idx))
 
         # Check for collisions (agents trying to occupy the same node)
-        for i, next_agent in enumerate(next_agents):
-            if any(next_agent == other_agent for j, other_agent in enumerate(next_agents) if j != i):
+        for i, next_pos in enumerate(proposed_positions):
+            if any(next_pos == other_pos for j, other_pos in enumerate(proposed_positions) if j != i):
                 collisions[i] = True
 
         # Update agent positions and calculate rewards
-        for i, (agent, next_agent) in enumerate(zip(self.agents, next_agents)):
+        for i, (agent, proposed_pos) in enumerate(zip(self.agents, proposed_positions)):
             if not self.done[i]:  # Only update if the agent is not done
                 if collisions[i]:
-                    rewards[i] -= 1  # Penalty for collision
-                    next_agent = agent  # Stay in the same place
-                elif next_agent == self.goals[i]:
-                    rewards[i] += 1000  # Reward for reaching the goal
+                    rewards[i] -= 1000  # Penalty for collision
+                    # Agent stays in place (next_agents[i] already equals agent)
+                elif proposed_pos == self.goals[i]:
+                    rewards[i] += 100  # Reward for reaching the goal
                     self.done[i] = True  # Mark as done
+                    # Update previous position before moving
+                    self.previous_positions[i] = agent
+                    next_agents[i] = proposed_pos  # Move to goal
                 else:
                     # Reward shaping based on shortest path distance to goal
                     current_distance = self._distance(agent, i)
-                    new_distance = self._distance(next_agent, i)
-                    distance_reward = (current_distance - new_distance) * 10 - 1
+                    new_distance = self._distance(proposed_pos, i)
+                    distance_reward = (current_distance - new_distance) * 100 - 50 # Reward for getting closer
                     rewards[i] += distance_reward
+                    # Update previous position before moving
+                    self.previous_positions[i] = agent
+                    next_agents[i] = proposed_pos  # Move to new position
+                rewards[i] -= 5  # Penalty for each step taken
+            # If agent is done, it stays at its current position (next_agents[i] already equals agent)
 
-                self.next_agents[i] = next_agent
-            else:
-                self.next_agents[i] = agent
-
-        self.agents = self.next_agents.copy()
+        self.agents = next_agents
         self.steps += 1
         done = all(self.done) or self.steps >= 500  # Terminate after 500 steps or if all agents are done
 
@@ -188,8 +195,8 @@ class GraphEnv:
             else:
                 # Take actions for this frame
                 actions = actions_sequence[frame - 1]
-                self.agents, _, _, info = self.step(actions)
-                for i, agent_pos in enumerate(self.agents):
+                next_state, _, _, info = self.step(actions)
+                for i, agent_pos in enumerate(next_state):
                     agent_nodes[i].set_offsets([pos[agent_pos]])
                 title.set_text(f"Step: {info['steps']}")
 
@@ -197,10 +204,11 @@ class GraphEnv:
 
         # Create animation
         anim = animation.FuncAnimation(fig, update, frames=len(actions_sequence) + 1,
-                                       interval=500, blit=False, repeat=False)
+                                       interval=1000, blit=False, repeat=False)
         plt.tight_layout()
-        plt.show()
 
+        # Return the animation object before showing the plot
+        # This ensures the caller can save a reference to it
         return anim
 
     def execute_actions(self, actions_sequence):
@@ -210,8 +218,8 @@ class GraphEnv:
         state_history.append(self.agents.copy())
 
         for actions in actions_sequence:
-            self.agents, _, done, _ = self.step(actions)
-            state_history.append(self.agents.copy())
+            next_state, _, done, _ = self.step(actions)
+            state_history.append(next_state.copy())
             if done:
                 break
 

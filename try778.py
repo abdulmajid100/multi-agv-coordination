@@ -1,58 +1,41 @@
 import numpy as np
 import random
 import networkx as nx
+import matplotlib.pyplot as plt
 from graph_env_c_new import GraphEnv
 
-# Q-learning parameters
-alpha = 0.05  # Learning rate
-gamma = 0.99  # Discount factor
-epsilon_start = 1.0  # Initial exploration rate
-epsilon_min = 0.2  # Minimum exploration rate
-epsilon_decay = 0.9973  # Decay rate for epsilon
-num_episodes = 2000  # Number of episodes
-alpha_start = 1
-alpha_decay = 0.01
+# Q-learning hyperparameters
+alpha = 0.05        # Learning rate
+gamma = 0.99        # Discount factor
+epsilon_start = 1.0 # Initial exploration rate
+epsilon_min = 0.1   # Minimum exploration rate
+epsilon_decay = 0.9987  # Decay rate for epsilon
+num_episodes = 2000 # Number of episodes
+alpha_start = 0.1   # Initial learning rate
+alpha_decay = 0.01  # Learning rate decay
 
-G = nx.Graph()
+# Initialize the directed graph
+G = nx.DiGraph()
+nodes = list(range(1, 30))
+G.add_nodes_from(nodes)
+edges = [
+    (1, 4), (2, 4), (3, 4), (4, 1), (4, 2), (4, 3), (4, 6), (4, 5),
+    (5, 4), (6, 4), (4, 11), (11, 4), (11, 10), (11, 21), (11, 12),
+    (10, 11), (10, 20), (20, 10), (21, 11), (12, 11), (12, 22),
+    (22, 12), (12, 13), (13, 12), (13, 23), (23, 13), (13, 14),
+    (14, 13), (14, 24), (24, 14), (14, 15), (15, 14), (15, 25),
+    (25, 15), (15, 16), (16, 15), (16, 26), (26, 16), (16, 17),
+    (17, 16), (17, 27), (27, 17), (17, 18), (18, 17), (18, 28),
+    (28, 18), (18, 19), (19, 18), (19, 29), (29, 19), (9, 16),
+    (16, 9)
+]
+G.add_edges_from(edges)
 
-# Create a grid-like graph structure based on your original grid layout
-grid_size = (10, 10)
-
-# Add all nodes that are not obstacles
-obstacles = [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 6), (0, 7), (0, 8), (0, 9),
-             (1, 0), (1, 1), (1, 2), (1, 3), (1, 4), (1, 6), (1, 7), (1, 8), (1, 9),
-             (2, 0), (2, 1), (2, 2), (2, 3), (2, 4), (2, 6), (2, 7), (2, 8), (2, 9),
-             (3, 0), (3, 1), (3, 2), (3, 3), (3, 4), (3, 6), (3, 7), (3, 8), (3, 9),
-             (4, 0), (4, 1), (4, 2), (4, 3), (4, 4), (4, 6), (4, 7), (4, 8), (4, 9),
-             (5, 0), (5, 1), (5, 2), (5, 3), (5, 4),
-             (6, 0), (6, 1), (6, 2), (6, 3), (6, 4), (6, 6), (6, 7), (6, 8), (6, 9),
-             (7, 0), (7, 1), (7, 2), (7, 3), (7, 4), (7, 6), (7, 7), (7, 8), (7, 9),
-             (8, 0), (8, 1), (8, 2), (8, 3), (8, 4), (8, 6), (8, 7), (8, 8), (8, 9),
-             (9, 0), (9, 1), (9, 2), (9, 3), (9, 4), (9, 6), (9, 7), (9, 8), (9, 9)]
-
-# Add nodes
-for x in range(grid_size[0]):
-    for y in range(grid_size[1]):
-        if (x, y) not in obstacles:
-            # We'll encode 2D coordinates to a single node ID
-            node_id = x * grid_size[1] + y
-            G.add_node(node_id, pos=(x, y))
-
-# Add edges (connections between adjacent nodes)
-for x in range(grid_size[0]):
-    for y in range(grid_size[1]):
-        if (x, y) not in obstacles:
-            current_node = x * grid_size[1] + y
-
-            # Check adjacent cells
-            neighbors = [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
-            for nx, ny in neighbors:
-                if 0 <= nx < grid_size[0] and 0 <= ny < grid_size[1] and (nx, ny) not in obstacles:
-                    neighbor_node = nx * grid_size[1] + ny
-                    G.add_edge(current_node, neighbor_node)
 def state_to_index(state, num_nodes):
     """
     Convert a multi-agent state on a graph to a unique index.
+    This function maps a multi-dimensional state (positions of multiple agents)
+    to a single integer index for use in the Q-table.
 
     Args:
         state: Array of node positions for each agent
@@ -63,12 +46,14 @@ def state_to_index(state, num_nodes):
     """
     num_agents = len(state)
     index = 0
-    factor = num_nodes ** (num_agents - 1)
+    factor = 1
 
-    for i in range(num_agents):
-        node_id = state[i]
+    # Process agents in reverse order for better numerical stability
+    for i in range(num_agents - 1, -1, -1):
+        # Adjust for 1-based node IDs by subtracting 1
+        node_id = state[i] - 1
         index += node_id * factor
-        factor //= num_nodes
+        factor *= num_nodes
 
     return index
 
@@ -76,6 +61,9 @@ def state_to_index(state, num_nodes):
 def q_learning(env, num_episodes, num_nodes):
     """
     Q-learning algorithm for multi-agent path finding in a graph environment.
+
+    This implementation uses a separate Q-table for each agent and employs
+    an epsilon-greedy exploration strategy with adaptive decay.
 
     Args:
         env: The graph environment
@@ -85,39 +73,46 @@ def q_learning(env, num_episodes, num_nodes):
     Returns:
         A list of Q-tables, one for each agent
     """
-    # Get maximum action size (largest number of neighbors for any node)
-    max_action_size = max(env.get_valid_actions(i) for i in range(env.num_agents))
+    # Get maximum action size (largest number of neighbors for any node in the graph + 1 for stay action)
+    max_neighbors = max(len(list(env.graph.neighbors(node))) for node in env.graph.nodes())
+    max_action_size = max_neighbors + 1  # +1 for the "stay" action
 
     # Initialize Q-tables for each agent
-    print(num_nodes)
     q_tables = [np.zeros((num_nodes ** env.num_agents, max_action_size)) for _ in range(env.num_agents)]
 
     previous_total_rewards = float('-inf')
+
+    # Track rewards history for visualization
+    rewards_history = []
 
     for episode in range(num_episodes):
         state = env.reset()
         done = False
         total_rewards = np.zeros(env.num_agents)
+
+        # Calculate epsilon and alpha for this episode
         epsilon = max(epsilon_min, epsilon_start * (epsilon_decay ** episode))
-        alpha = max(0.001, alpha_start / (1 + episode * alpha_decay))
+        alpha_current = max(0.001, alpha_start / (1 + episode * alpha_decay))
 
         while not done:
             actions = []
+
+            # Determine actions for each agent
             for i in range(env.num_agents):
                 valid_actions = env.get_valid_actions(i)
+                state_index = state_to_index(state, num_nodes)
 
                 if random.uniform(0, 1) < epsilon:
                     # Explore: choose a random valid action
                     action = random.randint(0, valid_actions - 1)
                 else:
                     # Exploit: choose the best action from Q-table
-                    state_index = state_to_index(state, num_nodes)
-                    # Only consider valid actions
                     valid_q_values = q_tables[i][state_index][:valid_actions]
                     action = np.argmax(valid_q_values)
 
                 actions.append(action)
 
+            # Take a step in the environment
             next_state, rewards, done, info = env.step(actions)
             total_rewards += rewards
 
@@ -128,8 +123,8 @@ def q_learning(env, num_episodes, num_nodes):
 
                 # Get the number of valid actions for the next state
                 next_valid_actions = env.get_valid_actions(i)
+
                 # Find best next action considering only valid actions
-                print(next_state_index, next_valid_actions)
                 best_next_action = np.argmax(q_tables[i][next_state_index][:next_valid_actions])
 
                 # Calculate temporal difference target and error
@@ -137,52 +132,88 @@ def q_learning(env, num_episodes, num_nodes):
                 td_error = td_target - q_tables[i][state_index][actions[i]]
 
                 # Update Q-value
-                q_tables[i][state_index][actions[i]] += alpha * td_error
+                q_tables[i][state_index][actions[i]] += alpha_current * td_error
 
             state = next_state
 
-        # Adjust epsilon based on performance
+        # Adaptive epsilon decay based on performance
         if np.sum(total_rewards) > np.sum(previous_total_rewards):
             epsilon = max(epsilon_min, epsilon * 0.99)  # Decay faster if improving
         else:
             epsilon = max(epsilon_min, epsilon * 0.999)  # Decay slower if not improving
 
-        previous_total_rewards = total_rewards
+        previous_total_rewards = total_rewards.copy()  # Create a copy to avoid reference issues
 
-        # Print episode progress
-        if episode % 100 == 0:
-            print(f"Episode {episode}/{num_episodes}, Total Rewards: {total_rewards}, Epsilon: {epsilon:.4f}")
+        # Append the sum of rewards to history
+        rewards_history.append(np.sum(total_rewards))
 
-    return q_tables
+        # Calculate average reward over last 100 episodes (or fewer if not enough episodes yet)
+        window_size = min(100, episode + 1)
+        avg_reward = np.mean(rewards_history[-window_size:])
+
+        # Print episode progress more frequently (every 20 episodes)
+        if episode % 20 == 0:
+            print(f"Episode {episode}/{num_episodes}, Total Rewards: {total_rewards}, Avg Reward: {avg_reward:.2f}, Epsilon: {epsilon:.4f}")
+
+    # Plot rewards history
+    plt.figure(figsize=(10, 5))
+    plt.plot(rewards_history)
+    plt.title('Total Rewards per Episode')
+    plt.xlabel('Episode')
+    plt.ylabel('Total Reward')
+    plt.grid(True)
+
+    # Plot moving average for smoother visualization
+    if len(rewards_history) > 10:
+        window_size = min(100, len(rewards_history))
+        moving_avg = np.convolve(rewards_history, np.ones(window_size)/window_size, mode='valid')
+        plt.plot(range(window_size-1, len(rewards_history)), moving_avg, 'r-', label=f'{window_size}-episode Moving Average')
+        plt.legend()
+
+    plt.savefig('rewards_history.png')
+    plt.show()
+
+    print(f"Final average reward (last 100 episodes): {np.mean(rewards_history[-100:]):.2f}")
+
+    return q_tables, rewards_history
 
 
 def main():
-    # Create a graph for the environment
-    grid_size = (10, 10)
-
-    # Convert coordinate goals and initial positions to node IDs
-    goals_coords = [(9, 5), (0, 5), (5, 9)]
-    initial_positions_coords = [(5, 9), (9, 5), (0, 5)]
-
-    goals = [g[0] * grid_size[1] + g[1] for g in goals_coords]
-    initial_positions = [pos[0] * grid_size[1] + pos[1] for pos in initial_positions_coords]
+    """
+    Main function to set up the environment, train agents using Q-learning,
+    and visualize the results.
+    """
+    # Define goals and initial positions for agents
+    goals = [1, 18, 24]  # Goal nodes for each agent
+    initial_positions = [24, 11, 26]  # Starting positions for each agent
+    num_agents = len(goals)  # Number of agents
 
     # Create the environment
-    num_agents = 3
     env = GraphEnv(G, num_agents, goals, initial_positions)
 
-    # Count total number of nodes
+    # Count total number of nodes in the graph
     num_nodes = len(G.nodes())
 
-    # Train with Q-learning
-    q_tables = q_learning(env, num_episodes, num_nodes)
+    print(f"Environment created with {num_agents} agents")
+    print(f"Goals: {goals}")
+    print(f"Initial positions: {initial_positions}")
+    print(f"Total nodes in graph: {num_nodes}")
 
+    # Train agents with Q-learning
+    print("\nStarting Q-learning training...")
+    q_tables, rewards_history = q_learning(env, num_episodes, num_nodes)
     print("Training completed.")
 
-    # Testing trained agents
+    # Print final statistics about learning
+    print(f"Final total reward: {rewards_history[-1]:.2f}")
+    print(f"Best episode reward: {max(rewards_history):.2f}")
+
+    # Test the trained agents
+    print("\nTesting trained agents...")
     state = env.reset()
     done = False
     actions_list = []
+    step_count = 0
 
     while not done:
         actions = []
@@ -193,12 +224,22 @@ def main():
             action = np.argmax(valid_q_values)
             actions.append(action)
 
+        # Record actions and take a step
         actions_list.append(actions)
-        print(f"Agents' positions: {state}")
-        state, _, done, _ = env.step(actions)
+        if step_count % 10 == 0:  # Print every 10 steps to reduce output
+            print(f"Step {step_count}: Agents at {state}, Actions: {actions}")
+
+        state, rewards, done, info = env.step(actions)
+        step_count += 1
+
+    print(f"Testing completed in {step_count} steps")
+    print(f"Final positions: {state}")
 
     # Animate the result
-    env.animate(actions_list)
+    print("\nGenerating animation...")
+    anim = env.animate(actions_list)
+    # Save a reference to the animation to prevent it from being garbage collected
+    plt.show()
 
 
 if __name__ == "__main__":
