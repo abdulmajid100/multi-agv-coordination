@@ -9,7 +9,7 @@ alpha = 0.05        # Learning rate
 gamma = 0.99        # Discount factor
 epsilon_start = 1.0 # Initial exploration rate
 epsilon_min = 0.1   # Minimum exploration rate
-epsilon_decay = 0.9987  # Decay rate for epsilon
+epsilon_decay = 0.9973  # Decay rate for epsilon
 num_episodes = 2000 # Number of episodes
 alpha_start = 0.1   # Initial learning rate
 alpha_decay = 0.01  # Learning rate decay
@@ -184,7 +184,7 @@ def main():
     and visualize the results.
     """
     # Define goals and initial positions for agents
-    goals = [1, 18, 24]  # Goal nodes for each agent
+    goals = [1, 15, 28]  # Goal nodes for each agent
     initial_positions = [24, 11, 26]  # Starting positions for each agent
     num_agents = len(goals)  # Number of agents
 

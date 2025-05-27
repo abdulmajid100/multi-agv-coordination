@@ -85,13 +85,11 @@ class GraphEnv:
                     rewards[i] -= 1000  # Penalty for collision
                     # Agent stays in place (next_agents[i] already equals agent)
                 elif proposed_pos == self.goals[i]:
-                    rewards[i] += 1000   # Reward for reaching the goal
+                    rewards[i] += 100  # Reward for reaching the goal
                     self.done[i] = True  # Mark as done
                     # Update previous position before moving
-
+                    self.previous_positions[i] = agent
                     next_agents[i] = proposed_pos  # Move to goal
-                    if next_agents[i] != agent:
-                        self.previous_positions[i] = agent
                 else:
                     # Reward shaping based on shortest path distance to goal
                     current_distance = self._distance(agent, i)
@@ -99,24 +97,14 @@ class GraphEnv:
                     distance_reward = (current_distance - new_distance) * 100 - 50 # Reward for getting closer
                     rewards[i] += distance_reward
                     # Update previous position before moving
-
+                    self.previous_positions[i] = agent
                     next_agents[i] = proposed_pos  # Move to new position
-                    if next_agents[i] != agent:
-                        self.previous_positions[i] = agent
-                rewards[i] -= 50  # Penalty for each step taken
             # If agent is done, it stays at its current position (next_agents[i] already equals agent)
 
         self.agents = next_agents
         self.steps += 1
         done = all(self.done) or self.steps >= 500  # Terminate after 500 steps or if all agents are done
-        if all(self.done):
-            print(rewards)
-            rewards = rewards + 100000  # Bonus for completing all goals
-            print(rewards)
-        elif not all(self.done) and self.steps >= 500:
-            #print(rewards)
-            rewards = rewards - 100000 # Penalty for not completing all goals within 1000 steps
-            #print(rewards)
+
         return np.array(self.agents), rewards, done, {'steps': self.steps}
 
     def _distance(self, node, agent_idx):
@@ -149,12 +137,11 @@ class GraphEnv:
 
         # Filter out the previous position to prevent backward movement
         if self.previous_positions[agent_idx] is not None:
-            neighbors = [n for n in neighbors if n != self.previous_positions[agent_idx]]
-            #print(self.previous_positions[agent_idx], neighbors)
-
-        # If no valid neighbors (all would be backward), allow staying in place
-        if not neighbors:
-            return position
+            # Remove the previous position from neighbors if it exists
+            filtered_neighbors = [n for n in neighbors if n != self.previous_positions[agent_idx]]
+            # If there are no valid neighbors after filtering, allow all neighbors
+            if filtered_neighbors:
+                neighbors = filtered_neighbors
 
         # Special action for staying in place
         if action == len(neighbors):
@@ -170,8 +157,18 @@ class GraphEnv:
     def get_valid_actions(self, agent_idx):
         """Get the number of valid actions for an agent in its current position."""
         position = self.agents[agent_idx]
+        neighbors = list(self.graph.neighbors(position))
+
+        # Filter out the previous position to prevent backward movement
+        if self.previous_positions[agent_idx] is not None:
+            # Remove the previous position from neighbors if it exists
+            filtered_neighbors = [n for n in neighbors if n != self.previous_positions[agent_idx]]
+            # If there are no valid neighbors after filtering, allow all neighbors
+            if filtered_neighbors:
+                neighbors = filtered_neighbors
+
         # Number of neighbors plus one for the "stay" action
-        return len(list(self.graph.neighbors(position))) + 1
+        return len(neighbors) + 1
 
     def animate(self, actions_sequence):
         """Animate the agents moving through the graph."""

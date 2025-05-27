@@ -13,6 +13,7 @@ class GridEnv:
         self.goals = goals
         self.initial_positions = initial_positions
         self.next_agents = []
+        self.previous_positions = [None] * num_agents  # Track previous positions to prevent backward movement
         self.reset()
 
     def reset(self):
@@ -23,6 +24,7 @@ class GridEnv:
             self.agents = self._validate_initial_positions(self.initial_positions)
         self.done = [False] * self.num_agents
         self.steps = 0
+        self.previous_positions = [None] * self.num_agents  # Reset previous positions
         return np.array(self.agents)
 
     def _validate_initial_positions(self, positions):
@@ -55,16 +57,20 @@ class GridEnv:
         for i, (agent, next_agent) in enumerate(zip(self.agents, next_agents)):
             if not self.done[i]:  # Only update if the agent is not done
                 if collisions[i]:
-                    rewards[i] -= 10  # Penalty for collision
+                    rewards[i] -= 1  # Penalty for collision
                     next_agent = agent  # Stay in the same place
                 elif self._is_goal(next_agent, i):
                     rewards[i] += 1000  # Reward for reaching the goal
                     self.done[i] = True  # Mark as done
+                    # Update previous position before moving
+                    self.previous_positions[i] = agent
                 else:
                     current_distance = self._distance(agent, self.goals[i])
                     new_distance = self._distance(next_agent, self.goals[i])
                     distance_reward = (current_distance - new_distance) * 100 - 50 # Reward for getting closer
                     rewards[i] += distance_reward
+                    # Update previous position before moving
+                    self.previous_positions[i] = agent
 
                 self.next_agents[i] = next_agent
                 rewards[i] -= 50  # Penalty for each step taken
@@ -90,9 +96,25 @@ class GridEnv:
     def _apply_action(self, position, action):
         # Define actions: 0=left, 1=up, 2=right, 3=down, 4=wait
         moves = [(-1, 0), (0, 1), (1, 0), (0, -1), (0, 0)]  # Corrected move list
+
+        # Find the agent index based on position
+        agent_idx = None
+        for i, agent_pos in enumerate(self.agents):
+            if position == agent_pos:
+                agent_idx = i
+                break
+
         if action < len(moves):  # Ensure action is within bounds
             move = moves[action]
             new_position = (position[0] + move[0], position[1] + move[1])
+
+            # Check if the new position would be a backward move
+            if (agent_idx is not None and
+                self.previous_positions[agent_idx] is not None and
+                new_position == self.previous_positions[agent_idx]):
+                # If it's a backward move, stay in place
+                return position
+
             return new_position if self._is_within_bounds(new_position) else position
         else:
             raise ValueError(f"Invalid action {action}. Action must be between 0 and {len(moves) - 1}.")
