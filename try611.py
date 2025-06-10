@@ -105,9 +105,11 @@ def update(frame):
                     other_current_task = agv_tasks[other_agv][0]
                     shared_nodes = set(current_task) & set(other_current_task)
                     shared_nodes_with_others[other_agv] = list(shared_nodes)
+                    print(shared_nodes_with_others[other_agv], other_agv)
 
             if can_move(agv, shared_nodes_with_others, other_agvs, current_node, next_node):
                 moves.append((agv, current_node, next_node))
+                print(moves)
 
     # Execute all moves
     for agv, current_node, next_node in moves:

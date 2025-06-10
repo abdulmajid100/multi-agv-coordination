@@ -2,6 +2,16 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
+# This file (try610.py) differs from try611.py in several key ways:
+# 1. AGV Tasks: Different initial paths for AGVs (especially AGV1 and GEN)
+# 2. Functions: try610.py has both can_move() and can_move2() functions, while try611.py only has can_move()
+# 3. can_move() Logic: The implementation is different - try610.py returns True if conditions are met, while 
+#    try611.py returns False if certain conditions are met
+# 4. Movement Logic: try610.py processes AGVs one by one with complex shared node handling and a global 'x' list,
+#    while try611.py first determines all possible moves, then executes them all at once
+# 5. Code Complexity: try610.py has more complex logic with additional variables (w, s, x) and debug print statements
+# 6. calculate_shared_nodes(): try610.py has this function for initial calculation, try611.py doesn't have it
+
 # Initialize the directed graph
 G = nx.DiGraph()
 nodes = list(range(1, 30)) + [9]

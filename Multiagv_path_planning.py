@@ -7,8 +7,8 @@ alpha = 0.05  # Learning rate
 gamma = 0.99  # Discount factor
 epsilon_start = 1.0  # Initial exploration rate
 epsilon_min = 0.2  # Minimum exploration rate
-epsilon_decay = 0.9973  # Decay rate for epsilon
-num_episodes = 2000  # Number of episodes
+epsilon_decay = 0.997  # Decay rate for epsilon
+num_episodes = 1000  # Number of episodes
 alpha_start = 1
 alpha_decay = 0.01
 

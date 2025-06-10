@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import networkx as nx
+from mpmath import degree
 
 
 class GraphEnv:
@@ -82,7 +83,7 @@ class GraphEnv:
         for i, (agent, proposed_pos) in enumerate(zip(self.agents, proposed_positions)):
             if not self.done[i]:  # Only update if the agent is not done
                 if collisions[i]:
-                    rewards[i] -= 1000  # Penalty for collision
+                    rewards[i] -= 10000  # Penalty for collision
                     # Agent stays in place (next_agents[i] already equals agent)
                 elif proposed_pos == self.goals[i]:
                     rewards[i] += 1000   # Reward for reaching the goal
@@ -90,7 +91,7 @@ class GraphEnv:
                     # Update previous position before moving
 
                     next_agents[i] = proposed_pos  # Move to goal
-                    if next_agents[i] != agent:
+                    if next_agents[i] != agent or self.graph.degree(agent) == 1:
                         self.previous_positions[i] = agent
                 else:
                     # Reward shaping based on shortest path distance to goal
@@ -101,7 +102,7 @@ class GraphEnv:
                     # Update previous position before moving
 
                     next_agents[i] = proposed_pos  # Move to new position
-                    if next_agents[i] != agent:
+                    if next_agents[i] != agent or self.graph.degree(agent) == 1:
                         self.previous_positions[i] = agent
                 rewards[i] -= 50  # Penalty for each step taken
             # If agent is done, it stays at its current position (next_agents[i] already equals agent)
@@ -109,14 +110,6 @@ class GraphEnv:
         self.agents = next_agents
         self.steps += 1
         done = all(self.done) or self.steps >= 500  # Terminate after 500 steps or if all agents are done
-        if all(self.done):
-            print(rewards)
-            rewards = rewards + 100000  # Bonus for completing all goals
-            print(rewards)
-        elif not all(self.done) and self.steps >= 500:
-            #print(rewards)
-            rewards = rewards - 100000 # Penalty for not completing all goals within 1000 steps
-            #print(rewards)
         return np.array(self.agents), rewards, done, {'steps': self.steps}
 
     def _distance(self, node, agent_idx):
@@ -148,21 +141,21 @@ class GraphEnv:
         neighbors = list(self.graph.neighbors(position))
 
         # Filter out the previous position to prevent backward movement
-        if self.previous_positions[agent_idx] is not None:
-            neighbors = [n for n in neighbors if n != self.previous_positions[agent_idx]]
+        """if self.previous_positions[agent_idx] is not None:
+            neighbors = [n for n in neighbors if n != self.previous_positions[agent_idx]]"""
             #print(self.previous_positions[agent_idx], neighbors)
 
         # If no valid neighbors (all would be backward), allow staying in place
         if not neighbors:
             return position
 
-        # Special action for staying in place
-        if action == len(neighbors):
+        # Special action for staying in place (now it's the first action)
+        if action == 0:
             return position
 
-        # Move to a neighboring node
-        if action < len(neighbors):
-            return neighbors[action]
+        # Move to a neighboring node (adjust index by -1 since "stay" is now first)
+        if action <= len(neighbors):
+            return neighbors[action - 1]
         else:
             # Invalid action, stay in place
             return position

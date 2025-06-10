@@ -9,8 +9,8 @@ alpha = 0.05        # Learning rate
 gamma = 0.99        # Discount factor
 epsilon_start = 1.0 # Initial exploration rate
 epsilon_min = 0.1   # Minimum exploration rate
-epsilon_decay = 0.9973  # Decay rate for epsilon
-num_episodes = 2000 # Number of episodes
+epsilon_decay = 0.997  # Decay rate for epsilon
+num_episodes = 1000 # Number of episodes
 alpha_start = 0.1   # Initial learning rate
 alpha_decay = 0.01  # Learning rate decay
 
@@ -31,15 +31,17 @@ edges = [
 ]
 G.add_edges_from(edges)
 
-def state_to_index(state, num_nodes):
+def state_to_index(state, num_nodes, graph=None):
     """
     Convert a multi-agent state on a graph to a unique index.
     This function maps a multi-dimensional state (positions of multiple agents)
     to a single integer index for use in the Q-table.
+    The function incorporates node degree information and adjacency information as features.
 
     Args:
         state: Array of node positions for each agent
         num_nodes: Total number of nodes in the graph
+        graph: Optional networkx graph object to get node degrees and adjacency info
 
     Returns:
         A unique integer index representing the state
@@ -52,10 +54,33 @@ def state_to_index(state, num_nodes):
     for i in range(num_agents - 1, -1, -1):
         # Adjust for 1-based node IDs by subtracting 1
         node_id = state[i] - 1
-        index += node_id * factor
+
+        # Incorporate node degree and adjacency info if graph is provided
+        if graph is None:
+            # Get the degree of the node (number of connections)
+            node_degree = graph.degree(state[i])
+
+            # Get adjacency information - check if this node is connected to other agent nodes
+            adjacency_factor = 0
+            for j in range(num_agents):
+                if i != j and graph.has_edge(state[i], state[j]):
+                    # Add a small value for each connection to another agent's node
+                    adjacency_factor += 0.01
+
+            # Use node degree and adjacency as features but scale them down
+            degree_factor = node_degree / (10 * num_nodes)  # Scale down the degree influence
+
+            # Add the node_id and the scaled factors multiplied by the factor
+            index += (node_id + degree_factor + adjacency_factor) * factor
+        else:
+            # Simply add the node_id multiplied by the factor
+            index += node_id * factor
+
+        # Update the factor for the next agent
         factor *= num_nodes
 
-    return index
+    # Ensure the index is an integer and within bounds
+    return int(index)
 
 
 def q_learning(env, num_episodes, num_nodes):
@@ -100,7 +125,7 @@ def q_learning(env, num_episodes, num_nodes):
             # Determine actions for each agent
             for i in range(env.num_agents):
                 valid_actions = env.get_valid_actions(i)
-                state_index = state_to_index(state, num_nodes)
+                state_index = state_to_index(state, num_nodes, env.graph)
 
                 if random.uniform(0, 1) < epsilon:
                     # Explore: choose a random valid action
@@ -118,8 +143,8 @@ def q_learning(env, num_episodes, num_nodes):
 
             # Update Q-values for each agent
             for i in range(env.num_agents):
-                state_index = state_to_index(state, num_nodes)
-                next_state_index = state_to_index(next_state, num_nodes)
+                state_index = state_to_index(state, num_nodes, env.graph)
+                next_state_index = state_to_index(next_state, num_nodes, env.graph)
 
                 # Get the number of valid actions for the next state
                 next_valid_actions = env.get_valid_actions(i)
@@ -152,7 +177,7 @@ def q_learning(env, num_episodes, num_nodes):
         avg_reward = np.mean(rewards_history[-window_size:])
 
         # Print episode progress more frequently (every 20 episodes)
-        if episode % 20 == 0:
+        if episode % 100 == 0:
             print(f"Episode {episode}/{num_episodes}, Total Rewards: {total_rewards}, Avg Reward: {avg_reward:.2f}, Epsilon: {epsilon:.4f}")
 
     # Plot rewards history
@@ -184,8 +209,8 @@ def main():
     and visualize the results.
     """
     # Define goals and initial positions for agents
-    goals = [1, 15, 28]  # Goal nodes for each agent
-    initial_positions = [24, 11, 26]  # Starting positions for each agent
+    goals = [1, 25, 28]  # Goal nodes for each agent
+    initial_positions = [15, 12, 26]  # Starting positions for each agent
     num_agents = len(goals)  # Number of agents
 
     # Create the environment
@@ -218,7 +243,7 @@ def main():
     while not done:
         actions = []
         for i in range(num_agents):
-            state_index = state_to_index(state, num_nodes)
+            state_index = state_to_index(state, num_nodes, env.graph)
             valid_actions = env.get_valid_actions(i)
             valid_q_values = q_tables[i][state_index][:valid_actions]
             action = np.argmax(valid_q_values)
