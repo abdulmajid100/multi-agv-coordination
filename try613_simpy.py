@@ -24,13 +24,14 @@ edges = [
 G.add_edges_from(edges)
 
 class AGVSimulation:
-    def __init__(self, env, graph, num_agvs=4, path_length_range=(5, 30), num_paths_range=(4, 5), verbose=True):
+    def __init__(self, env, graph, num_agvs=4, path_length_range=(5, 30), num_paths_range=(4, 5), verbose=True, use_original_process=True):
         self.env = env
         self.graph = graph
         self.num_agvs = num_agvs
         self.path_length_range = path_length_range
         self.num_paths_range = num_paths_range
         self.verbose = verbose
+        self.use_original_process = use_original_process
         self.resource_states = {node: 0 for node in self.graph.nodes()}
         self.agv_tasks = {}
         self.agv_processes = []
@@ -93,6 +94,66 @@ class AGVSimulation:
         ):
             return False
         return True
+
+    def agv_process_original(self, agv):
+        """Original SimPy process for an AGV."""
+        # Track consecutive failed attempts to detect deadlocks
+        consecutive_failures = 0
+        max_consecutive_failures = 10  # Maximum number of consecutive failures before trying alternative path
+
+        while self.agv_tasks[agv]:
+            current_task = self.agv_tasks[agv][0]
+            print(current_task)
+            if len(current_task) <= 1:  # Task completed or only one node left
+                self.agv_tasks[agv].pop(0)
+                self.completed_paths += 1
+                consecutive_failures = 0  # Reset counter when task changes
+                if not self.agv_tasks[agv]:  # No more tasks
+                    break
+                continue
+
+            current_node = current_task[0]
+            next_node = current_task[1]
+
+            # Check if move is possible
+            other_agvs = [other_agv for other_agv in self.agv_tasks if other_agv != agv]
+            shared_nodes_with_others = {other_agv: [] for other_agv in other_agvs}
+
+            for other_agv in other_agvs:
+                if self.agv_tasks[other_agv]:
+                    other_current_task = self.agv_tasks[other_agv][0]
+                    shared_nodes = set(current_task) & set(other_current_task)
+                    shared_nodes_with_others[other_agv] = list(shared_nodes)
+
+            self.total_moves += 1
+            if self.can_move(agv, shared_nodes_with_others, other_agvs, current_node, next_node):
+                # Execute move
+                self.resource_states[current_node] = 0
+                self.resource_states[next_node] = agv
+                self.agv_tasks[agv][0].pop(0)
+                self.successful_moves += 1
+                consecutive_failures = 0  # Reset counter on successful move
+                if self.verbose:
+                    print(f"{agv} moves from {current_node} to {next_node}")
+            else:
+                self.collision_count += 1
+                consecutive_failures += 1
+                if self.verbose:
+                    print(f"{agv} collision detected at {next_node}, staying at {current_node}")
+
+                # Deadlock detection and resolution
+                if consecutive_failures >= max_consecutive_failures:
+                    if self.verbose:
+                        print(f"{agv} detected potential deadlock, skipping to next task")
+                    self.agv_tasks[agv].pop(0)  # Skip current task
+                    self.completed_paths += 1  # Count as completed (though unsuccessful)
+                    consecutive_failures = 0  # Reset counter
+                    if not self.agv_tasks[agv]:  # No more tasks
+                        break
+                    continue
+
+            # Simulate time passing
+            yield self.env.timeout(1)
 
     def agv_process(self, agv):
         """SimPy process for an AGV."""
@@ -167,7 +228,14 @@ class AGVSimulation:
         # Create and start AGV processes
         self.agv_processes = []
         for agv in self.agv_tasks:
-            process = self.env.process(self.agv_process(agv))
+            if self.use_original_process:
+                process = self.env.process(self.agv_process_original(agv))
+                if self.verbose:
+                    print(f"Using original process for {agv}")
+            else:
+                process = self.env.process(self.agv_process(agv))
+                if self.verbose:
+                    print(f"Using new process for {agv}")
             self.agv_processes.append(process)
 
         # Create a process to track and display progress
@@ -204,13 +272,13 @@ class AGVSimulation:
                     print("All AGVs have completed their tasks!")
                 break
 
-def run_multiple_simulations(num_simulations=50, num_agvs=4, max_time=1000, verbose=True, simulation_verbose=False):
+def run_multiple_simulations(num_simulations=50, num_agvs=4, max_time=1000, verbose=True, simulation_verbose=False, use_original_process=True):
     """Run multiple simulations and collect statistics."""
     results = []
 
     for i in range(num_simulations):
         env = simpy.Environment()
-        simulation = AGVSimulation(env, G, num_agvs=num_agvs, verbose=simulation_verbose)
+        simulation = AGVSimulation(env, G, num_agvs=num_agvs, verbose=simulation_verbose, use_original_process=use_original_process)
         result = simulation.run_simulation(max_time=max_time)
         results.append(result)
         if verbose:
@@ -253,17 +321,20 @@ def visualize_results(results):
     plt.savefig('simulation_results.png')
     plt.show()
 
-def analyze_by_agv_count(max_time=1000, verbose=True, simulation_verbose=False):
+def analyze_by_agv_count(max_time=1000, verbose=True, simulation_verbose=False, use_original_process=True):
     """Analyze how the number of AGVs affects performance."""
     agv_counts = [2, 3, 4, 5, 6]
     avg_success_rates = []
     avg_completion_rates = []
 
+    process_type = "Original" if use_original_process else "New"
+
     for num_agvs in agv_counts:
         if verbose:
-            print(f"\nRunning simulations with {num_agvs} AGVs...")
-        results = run_multiple_simulations(num_simulations=20, num_agvs=num_agvs, max_time=max_time, 
-                                          verbose=verbose, simulation_verbose=simulation_verbose)
+            print(f"\nRunning simulations with {num_agvs} AGVs using {process_type} process...")
+        results = run_multiple_simulations(num_simulations=20, num_agvs=num_agvs, max_time=max_time,
+                                          verbose=verbose, simulation_verbose=simulation_verbose,
+                                          use_original_process=use_original_process)
         avg_success_rates.append(sum(r['success_rate'] for r in results) / len(results))
         avg_completion_rates.append(sum(r['completion_rate'] for r in results) / len(results))
 
@@ -271,19 +342,69 @@ def analyze_by_agv_count(max_time=1000, verbose=True, simulation_verbose=False):
 
     plt.subplot(1, 2, 1)
     plt.plot(agv_counts, avg_success_rates, 'o-')
-    plt.title('Average Success Rate vs. Number of AGVs')
+    plt.title(f'Average Success Rate vs. Number of AGVs ({process_type} Process)')
     plt.xlabel('Number of AGVs')
     plt.ylabel('Average Success Rate')
 
     plt.subplot(1, 2, 2)
     plt.plot(agv_counts, avg_completion_rates, 'o-')
-    plt.title('Average Completion Rate vs. Number of AGVs')
+    plt.title(f'Average Completion Rate vs. Number of AGVs ({process_type} Process)')
     plt.xlabel('Number of AGVs')
     plt.ylabel('Average Completion Rate')
 
     plt.tight_layout()
-    plt.savefig('agv_count_analysis.png')
+    plt.savefig(f'agv_count_analysis_{process_type.lower()}.png')
     plt.show()
+
+    return {
+        'agv_counts': agv_counts,
+        'avg_success_rates': avg_success_rates,
+        'avg_completion_rates': avg_completion_rates
+    }
+
+def compare_processes(max_time=1000, verbose=True, simulation_verbose=False):
+    """Compare the original and new AGV processes."""
+    print("\n=== Comparing Original and New AGV Processes ===")
+
+    # Run analysis with original process
+    print("\nRunning analysis with Original process...")
+    original_results = analyze_by_agv_count(max_time=max_time, verbose=verbose, 
+                                           simulation_verbose=simulation_verbose, 
+                                           use_original_process=True)
+
+    # Run analysis with new process
+    print("\nRunning analysis with New process...")
+    new_results = analyze_by_agv_count(max_time=max_time, verbose=verbose, 
+                                      simulation_verbose=simulation_verbose, 
+                                      use_original_process=False)
+
+    # Compare the results
+    plt.figure(figsize=(12, 6))
+
+    plt.subplot(1, 2, 1)
+    plt.plot(original_results['agv_counts'], original_results['avg_success_rates'], 'o-', label='Original Process')
+    plt.plot(new_results['agv_counts'], new_results['avg_success_rates'], 's-', label='New Process')
+    plt.title('Success Rate Comparison')
+    plt.xlabel('Number of AGVs')
+    plt.ylabel('Average Success Rate')
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    plt.plot(original_results['agv_counts'], original_results['avg_completion_rates'], 'o-', label='Original Process')
+    plt.plot(new_results['agv_counts'], new_results['avg_completion_rates'], 's-', label='New Process')
+    plt.title('Completion Rate Comparison')
+    plt.xlabel('Number of AGVs')
+    plt.ylabel('Average Completion Rate')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.savefig('process_comparison.png')
+    plt.show()
+
+    return {
+        'original': original_results,
+        'new': new_results
+    }
 
 if __name__ == "__main__":
     # Set a reasonable time limit to prevent infinite execution
@@ -293,18 +414,34 @@ if __name__ == "__main__":
     verbose = True  # Show high-level progress
     simulation_verbose = False  # Hide detailed simulation output
 
-    print("Running multiple simulations to evaluate algorithm performance...")
-    results = run_multiple_simulations(
-        num_simulations=10, 
-        max_time=max_time, 
-        verbose=verbose, 
-        simulation_verbose=simulation_verbose
-    )
-    visualize_results(results)
+    # Choose which analysis to run
+    run_basic_analysis = False
+    run_agv_count_analysis = False
+    run_process_comparison = True
 
-    print("\nAnalyzing the effect of AGV count on performance...")
-    analyze_by_agv_count(
-        max_time=max_time, 
-        verbose=verbose, 
-        simulation_verbose=simulation_verbose
-    )
+    if run_basic_analysis:
+        print("Running multiple simulations to evaluate algorithm performance...")
+        results = run_multiple_simulations(
+            num_simulations=10,
+            max_time=max_time,
+            verbose=verbose,
+            simulation_verbose=simulation_verbose
+        )
+        visualize_results(results)
+
+    if run_agv_count_analysis:
+        print("\nAnalyzing the effect of AGV count on performance...")
+        analyze_by_agv_count(
+            max_time=max_time,
+            verbose=verbose,
+            simulation_verbose=simulation_verbose
+        )
+
+    if run_process_comparison:
+        print("\nComparing original and new AGV processes...")
+        # Use fewer simulations and AGVs for quicker comparison
+        compare_processes(
+            max_time=max_time,
+            verbose=verbose,
+            simulation_verbose=simulation_verbose
+        )
