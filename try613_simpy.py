@@ -102,7 +102,7 @@ class AGVSimulation:
         """Original SimPy process for an AGV."""
         # Track consecutive failed attempts to detect deadlocks
         consecutive_failures = 0
-        max_consecutive_failures = 1000  # Maximum number of consecutive failures before trying alternative path
+        max_consecutive_failures = 10  # Maximum number of consecutive failures before trying alternative path
         print(self.agv_tasks[agv], agv)
         while self.agv_tasks[agv]:
             current_task = self.agv_tasks[agv][0]
@@ -162,7 +162,7 @@ class AGVSimulation:
         """SimPy process for an AGV."""
         # Track consecutive failed attempts to detect deadlocks
         consecutive_failures = 0
-        max_consecutive_failures = 1000000  # Maximum number of consecutive failures before trying alternative path
+        max_consecutive_failures = 10  # Maximum number of consecutive failures before trying alternative path
         print(self.agv_tasks[agv], agv)
         while self.agv_tasks[agv]:
             current_task = self.agv_tasks[agv][0]
@@ -392,12 +392,14 @@ def compare_processes(max_time=1000, verbose=True, simulation_verbose=False):
 
     # Run analysis with original process
     print("\nRunning analysis with Original process...")
+    random.seed(42)
     original_results = analyze_by_agv_count(max_time=max_time, verbose=verbose, 
                                            simulation_verbose=simulation_verbose, 
                                            use_original_process=True)
 
     # Run analysis with new process
     print("\nRunning analysis with New process...")
+    random.seed(42)
     new_results = analyze_by_agv_count(max_time=max_time, verbose=verbose, 
                                       simulation_verbose=simulation_verbose, 
                                       use_original_process=False)
