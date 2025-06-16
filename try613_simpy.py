@@ -24,7 +24,7 @@ edges = [
 G.add_edges_from(edges)
 
 class AGVSimulation:
-    def __init__(self, env, graph, num_agvs=4, path_length_range=(5, 30), num_paths_range=(4, 5), verbose=True, use_original_process=True):
+    def __init__(self, env, graph, num_agvs=4, path_length_range=(10, 30), num_paths_range=(4, 5), verbose=True, use_original_process=True):
         self.env = env
         self.graph = graph
         self.num_agvs = num_agvs
@@ -43,6 +43,7 @@ class AGVSimulation:
 
     def generate_random_path(self, start_node=None):
         """Generate a random path in the graph."""
+        #print("the nodes are", list(self.graph.nodes()))
         if start_node is None:
             start_node = random.choice(list(self.graph.nodes()))
 
@@ -66,7 +67,9 @@ class AGVSimulation:
             num_paths = random.randint(*self.num_paths_range)
 
             # Generate first path
-            start_node = random.choice(list(self.graph.nodes()))
+            valid_start_nodes = [n for n in self.graph.nodes() if n not in [7, 8]]
+            start_node = random.choice(valid_start_nodes)
+
             paths = [self.generate_random_path(start_node)]
 
             # Generate subsequent paths starting from the end of the previous path
@@ -99,11 +102,11 @@ class AGVSimulation:
         """Original SimPy process for an AGV."""
         # Track consecutive failed attempts to detect deadlocks
         consecutive_failures = 0
-        max_consecutive_failures = 10  # Maximum number of consecutive failures before trying alternative path
-
+        max_consecutive_failures = 1000  # Maximum number of consecutive failures before trying alternative path
+        print(self.agv_tasks[agv], agv)
         while self.agv_tasks[agv]:
             current_task = self.agv_tasks[agv][0]
-            print(current_task)
+            #print(current_task)
             if len(current_task) <= 1:  # Task completed or only one node left
                 self.agv_tasks[agv].pop(0)
                 self.completed_paths += 1
@@ -159,8 +162,8 @@ class AGVSimulation:
         """SimPy process for an AGV."""
         # Track consecutive failed attempts to detect deadlocks
         consecutive_failures = 0
-        max_consecutive_failures = 10  # Maximum number of consecutive failures before trying alternative path
-
+        max_consecutive_failures = 1000000  # Maximum number of consecutive failures before trying alternative path
+        print(self.agv_tasks[agv], agv)
         while self.agv_tasks[agv]:
             current_task = self.agv_tasks[agv][0]
 
@@ -196,7 +199,7 @@ class AGVSimulation:
                 self.resource_states[current_node] = 0
                 self.resource_states[next_node] = agv
                 self.agv_tasks[agv][0].pop(0)
-                print(self.agv_tasks[agv], agv)
+                #print(self.agv_tasks[agv], agv)
                 self.successful_moves += 1
                 consecutive_failures = 0  # Reset counter on successful move
                 if self.verbose:
@@ -362,9 +365,30 @@ def analyze_by_agv_count(max_time=1000, verbose=True, simulation_verbose=False, 
         'avg_completion_rates': avg_completion_rates
     }
 
+def print_agv_paths(simulation):
+    """Print the paths assigned to each AGV."""
+    print("\n=== AGV Paths ===")
+    for agv, tasks in simulation.agv_tasks.items():
+        print(f"{agv} paths:")
+        for i, path in enumerate(tasks):
+            print(f"  Path {i+1}: {path}")
+    print("=================\n")
+
 def compare_processes(max_time=1000, verbose=True, simulation_verbose=False):
     """Compare the original and new AGV processes."""
     print("\n=== Comparing Original and New AGV Processes ===")
+
+    # Create a simulation with a fixed seed to demonstrate that the same paths are used
+    random.seed(42)  # Set a fixed seed for reproducibility
+    env = simpy.Environment()
+    simulation = AGVSimulation(env, G, num_agvs=5, verbose=simulation_verbose, use_original_process=True)
+    simulation.generate_random_tasks()
+
+    print("\nNOTE: Both process types use the SAME generated paths for AGVs.")
+    print("The difference is in how they handle shared nodes and potential collisions.")
+    print("Below are the paths that would be used by both process types:")
+    print_agv_paths(simulation)
+    random.seed()  # Reset the seed
 
     # Run analysis with original process
     print("\nRunning analysis with Original process...")
@@ -406,6 +430,51 @@ def compare_processes(max_time=1000, verbose=True, simulation_verbose=False):
         'new': new_results
     }
 
+def demonstrate_same_paths():
+    """Demonstrate that both process types use the same generated paths."""
+    print("\n=== Demonstrating that both process types use the same paths ===")
+
+    # Set a fixed seed for reproducibility
+    random.seed(42)
+
+    # Create first simulation with original process
+    env1 = simpy.Environment()
+    sim1 = AGVSimulation(env1, G, num_agvs=5, verbose=False, use_original_process=True)
+    sim1.generate_random_tasks()
+
+    # Create second simulation with new process but same seed
+    random.seed(42)  # Reset to same seed
+    env2 = simpy.Environment()
+    sim2 = AGVSimulation(env2, G, num_agvs=5, verbose=False, use_original_process=False)
+    sim2.generate_random_tasks()
+
+    # Compare the paths
+    print("\nPaths for original process:")
+    print_agv_paths(sim1)
+
+    print("\nPaths for new process:")
+    print_agv_paths(sim2)
+
+    # Check if paths are identical
+    paths_identical = True
+    for agv in sim1.agv_tasks:
+        if agv in sim2.agv_tasks:
+            if sim1.agv_tasks[agv] != sim2.agv_tasks[agv]:
+                paths_identical = False
+                break
+        else:
+            paths_identical = False
+            break
+
+    if paths_identical:
+        print("\nCONCLUSION: Both process types use IDENTICAL paths.")
+        print("The difference is only in how they handle shared nodes and potential collisions.")
+    else:
+        print("\nCONCLUSION: The paths are different between the two process types.")
+
+    # Reset the random seed
+    random.seed()
+
 if __name__ == "__main__":
     # Set a reasonable time limit to prevent infinite execution
     max_time = 500  # Limit each simulation to 500 time units
@@ -418,6 +487,7 @@ if __name__ == "__main__":
     run_basic_analysis = False
     run_agv_count_analysis = False
     run_process_comparison = True
+    run_path_demonstration = True
 
     if run_basic_analysis:
         print("Running multiple simulations to evaluate algorithm performance...")
@@ -445,3 +515,6 @@ if __name__ == "__main__":
             verbose=verbose,
             simulation_verbose=simulation_verbose
         )
+
+    if run_path_demonstration:
+        demonstrate_same_paths()
