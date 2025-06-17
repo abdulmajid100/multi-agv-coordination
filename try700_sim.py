@@ -24,7 +24,7 @@ edges = [
 G.add_edges_from(edges)
 
 class AGVSimulation:
-    def __init__(self, env, graph, num_agvs=4, path_length_range=(10, 30), num_paths_range=(4, 5), verbose=True, use_original_process=True):
+    def __init__(self, env, graph, num_agvs=4, path_length_range=(15, 30), num_paths_range=(4, 5), verbose=True, use_original_process=True):
         self.env = env
         self.graph = graph
         self.num_agvs = num_agvs
@@ -42,20 +42,23 @@ class AGVSimulation:
         self.total_paths = 0
 
     def generate_random_path(self, start_node=None):
-        """Generate a random path in the graph."""
+        """Generate a random path in the graph with no repeated nodes."""
         #print("the nodes are", list(self.graph.nodes()))
         if start_node is None:
             start_node = random.choice(list(self.graph.nodes()))
 
         path_length = random.randint(*self.path_length_range)
         path = [start_node]
+        visited_nodes = {start_node}  # Keep track of visited nodes
 
         for _ in range(path_length - 1):
-            neighbors = list(self.graph.neighbors(path[-1]))
+            # Get neighbors that haven't been visited yet
+            neighbors = [n for n in self.graph.neighbors(path[-1]) if n not in visited_nodes]
             if not neighbors:
-                break
+                break  # No unvisited neighbors, end the path
             next_node = random.choice(neighbors)
             path.append(next_node)
+            visited_nodes.add(next_node)  # Mark the node as visited
 
         return path
 
@@ -175,8 +178,6 @@ class AGVSimulation:
                 # Execute move
                 self.resource_states[current_node] = 0
                 self.resource_states[next_node] = agv
-                print(shared_nodes_with_others, "ww")
-                print(self.agv_tasks[agv],agv)
                 self.agv_tasks[agv][0].pop(0)
                 self.successful_moves += 1
                 consecutive_failures = 0  # Reset counter on successful move
@@ -242,8 +243,6 @@ class AGVSimulation:
                 # Execute move
                 self.resource_states[current_node] = 0
                 self.resource_states[next_node] = agv
-                print(shared_nodes_with_others, "ww")
-                print(self.agv_tasks[agv],agv)
                 self.agv_tasks[agv][0].pop(0)
                 #print(self.agv_tasks[agv], agv)
                 self.successful_moves += 1
@@ -251,8 +250,6 @@ class AGVSimulation:
                 if self.verbose:
                     print(f"{agv} moves from {current_node} to {next_node}")
             else:
-                #print(shared_nodes_with_others, "ww")
-                #print(self.agv_tasks[agv],agv)
                 self.collision_count += 1
                 consecutive_failures += 1
                 if self.verbose:
@@ -272,29 +269,14 @@ class AGVSimulation:
             # Simulate time passing
             yield self.env.timeout(1)
 
-    manual_tasks1 = {
-        'AGV1': [[1, 4, 5]],
-        'AGV2': [[2, 4, 6]],
-        'AGV3': [[3, 4, 1]]
-    }
-    def set_manual_tasks(self, manual_tasks1):
-        """Set manual tasks for each AGV."""
-        self.agv_tasks = manual_tasks1
-    def run_simulation(self, max_time=10000, manual_tasks=manual_tasks1, progress_interval=100):
+    def run_simulation(self, max_time=1000, progress_interval=100):
         """Run the simulation with a maximum time limit."""
-        """Run the simulation with a maximum time limit."""
-        if manual_tasks:
-            self.total_paths = 9
-            self.set_manual_tasks(manual_tasks)
-        else:
-            self.generate_random_tasks()
+        self.generate_random_tasks()
 
         # Create and start AGV processes
         self.agv_processes = []
         for agv in self.agv_tasks:
             if self.use_original_process:
-                print(self.agv_tasks)
-                print(manual_tasks)
                 process = self.env.process(self.agv_process_original(agv))
                 if self.verbose:
                     print(f"Using original process for {agv}")
@@ -311,7 +293,6 @@ class AGVSimulation:
         self.env.run(until=max_time)
 
         # Calculate metrics
-        print(self.successful_moves, self.total_moves, self.completed_paths, self.total_paths)
         success_rate = self.successful_moves / self.total_moves if self.total_moves > 0 else 0
         completion_rate = self.completed_paths / self.total_paths if self.total_paths > 0 else 0
 
@@ -339,18 +320,14 @@ class AGVSimulation:
                     print("All AGVs have completed their tasks!")
                 break
 
-def run_multiple_simulations(num_simulations=50, num_agvs=4, max_time=10000, verbose=True, simulation_verbose=False, use_original_process=True):
+def run_multiple_simulations(num_simulations=50, num_agvs=4, max_time=1000, verbose=True, simulation_verbose=False, use_original_process=True):
     """Run multiple simulations and collect statistics."""
     results = []
 
     for i in range(num_simulations):
         env = simpy.Environment()
         simulation = AGVSimulation(env, G, num_agvs=num_agvs, verbose=simulation_verbose, use_original_process=use_original_process)
-        manual_tasks1 = {
-            'AGV1': [[23, 13, 14, 24], [24, 14, 13, 12, 11, 10, 20], [20, 10, 11, 12, 13, 14, 24], [24, 14, 15, 25]],
-            'AGV2': [[27, 17, 18, 19, 29], [29, 19, 18, 28], [28, 18, 17, 16, 15, 25], [25, 15, 14, 24], [24, 14, 15, 16, 26]]
-        }
-        result = simulation.run_simulation(manual_tasks=manual_tasks1, max_time=max_time)
+        result = simulation.run_simulation(max_time=max_time)
         results.append(result)
         if verbose:
             print(f"Simulation {i+1}/{num_simulations} completed: Success rate = {result['success_rate']:.2f}, Completion rate = {result['completion_rate']:.2f}")
@@ -392,7 +369,7 @@ def visualize_results(results):
     plt.savefig('simulation_results.png')
     plt.show()
 
-def analyze_by_agv_count(max_time=10000, verbose=True, simulation_verbose=False, use_original_process=True):
+def analyze_by_agv_count(max_time=1000, verbose=True, simulation_verbose=False, use_original_process=True):
     """Analyze how the number of AGVs affects performance."""
     agv_counts = [2, 3, 4, 5, 6]
     avg_success_rates = []
@@ -434,15 +411,18 @@ def analyze_by_agv_count(max_time=10000, verbose=True, simulation_verbose=False,
     }
 
 def print_agv_paths(simulation):
-    """Print the paths assigned to each AGV."""
+    """Print the paths assigned to each AGV and verify no node repetition."""
     print("\n=== AGV Paths ===")
     for agv, tasks in simulation.agv_tasks.items():
         print(f"{agv} paths:")
         for i, path in enumerate(tasks):
-            print(f"  Path {i+1}: {path}")
+            # Check for repeated nodes in the path
+            has_repeats = len(path) != len(set(path))
+            repeat_status = "HAS REPEATS!" if has_repeats else "No repeats"
+            print(f"  Path {i+1}: {path} - {repeat_status}")
     print("=================\n")
 
-def compare_processes(max_time=10000, verbose=True, simulation_verbose=False):
+def compare_processes(max_time=1000, verbose=True, simulation_verbose=False):
     """Compare the original and new AGV processes."""
     print("\n=== Comparing Original and New AGV Processes ===")
 
@@ -461,15 +441,15 @@ def compare_processes(max_time=10000, verbose=True, simulation_verbose=False):
     # Run analysis with original process
     print("\nRunning analysis with Original process...")
     random.seed(42)
-    original_results = analyze_by_agv_count(max_time=max_time, verbose=verbose, 
-                                           simulation_verbose=simulation_verbose, 
+    original_results = analyze_by_agv_count(max_time=max_time, verbose=verbose,
+                                           simulation_verbose=simulation_verbose,
                                            use_original_process=True)
 
     # Run analysis with new process
     print("\nRunning analysis with New process...")
     random.seed(42)
-    new_results = analyze_by_agv_count(max_time=max_time, verbose=verbose, 
-                                      simulation_verbose=simulation_verbose, 
+    new_results = analyze_by_agv_count(max_time=max_time, verbose=verbose,
+                                      simulation_verbose=simulation_verbose,
                                       use_original_process=False)
 
     # Compare the results
@@ -569,7 +549,7 @@ def check_first_moves_feasibility(simulation):
 
 if __name__ == "__main__":
     # Set a reasonable time limit to prevent infinite execution
-    max_time = 5000  # Limit each simulation to 500 time units
+    max_time = 500  # Limit each simulation to 500 time units
 
     # Control verbosity
     verbose = True  # Show high-level progress
@@ -579,7 +559,7 @@ if __name__ == "__main__":
     run_basic_analysis = False
     run_agv_count_analysis = False
     run_process_comparison = True
-    run_path_demonstration = True
+    run_path_demonstration = False
 
     if run_basic_analysis:
         print("Running multiple simulations to evaluate algorithm performance...")
