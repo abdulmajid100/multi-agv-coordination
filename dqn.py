@@ -48,7 +48,14 @@ def epsilon_greedy_policy(state, epsilon=0):
         action = random.randint(0, 4)  # random action
         return action
     else:
-        Q_values = model.predict(state.reshape(1, -1), verbose=0)[0]
+        # Ensure state has the correct shape for model prediction
+        if len(state.shape) == 1:
+            state = state.reshape(1, -1)
+        elif len(state.shape) > 2:
+            # If state has more than 2 dimensions, reshape it to 2D
+            state = state.reshape(state.shape[0], -1)
+
+        Q_values = model.predict(state, verbose=0)[0]
         return Q_values.argmax()  # optimal action according to the DQN
 
 from collections import deque
@@ -81,8 +88,11 @@ def sample_experiences(batch_size):
 
 def play_one_step(env, state, epsilon):
     action = epsilon_greedy_policy(state, epsilon)
+    actions.clear()  # Clear the actions list before appending
     actions.append(action)
     next_state, reward, done, info = env.step(actions)
+
+    # Store the original state and next_state in the replay buffer
     replay_buffer.append((state, action, reward, next_state, done))
     return next_state, reward, done, info
 
@@ -108,6 +118,20 @@ loss_fn = tf.keras.losses.MeanSquaredError
 def training_step(batch_size):
     experiences = sample_experiences(batch_size)
     states, actions, rewards, next_states, dones = experiences
+
+    # Ensure states and next_states have the correct shape for the model
+    if len(states.shape) == 1:
+        states = states.reshape(-1, 2)
+    elif len(states.shape) > 2:
+        # If states has more than 2 dimensions, reshape it to 2D
+        states = states.reshape(states.shape[0], -1)
+
+    if len(next_states.shape) == 1:
+        next_states = next_states.reshape(-1, 2)
+    elif len(next_states.shape) > 2:
+        # If next_states has more than 2 dimensions, reshape it to 2D
+        next_states = next_states.reshape(next_states.shape[0], -1)
+
     next_Q_values = model.predict(next_states, verbose=0)
     max_next_Q_values = next_Q_values.max(axis=1)
     runs = 1.0 - (dones)  # episode is not done or truncated
