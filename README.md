@@ -1,29 +1,52 @@
-# Terminal Exit Guide
+# Multi-AGV Coordination System
 
-This repository contains resources to help with terminal exit issues when running Python scripts that use matplotlib animations.
+**Repository:** `multi-agv-coordination`
 
-## The Problem
+Multi-agent coordination system for AGVs using grid environments, graph-based pathfinding, rule-based control, and reinforcement learning approaches.
 
-When running Python scripts that create matplotlib animations, the terminal may sometimes hang and not exit properly after the script completes. This is often due to animation objects being kept alive in memory or interactive mode (plt.ion()) being enabled without properly closing figures.
+## Overview
 
-## Solutions
+Comprehensive multi-AGV coordination system implementing both traditional rule-based methods and modern reinforcement learning approaches for collision-free path planning and task coordination in industrial environments [[1]].
 
-We've provided several resources to help you address this issue:
+## Files
 
-1. **terminal_guide.md**: A comprehensive guide with methods to terminate a hanging terminal on different operating systems.
+- `grid_environment.py` - Grid-based simulation environment
+- `graph_pathfinding.py` - Graph-based path planning algorithms
+- `rule_based_coordinator.py` - Traditional rule-based coordination
+- `rl_coordinator.py` - Reinforcement learning coordination agent
+- `multi_agv_system.py` - Main coordination system
 
-2. **terminal_exit_example.py**: A simple example script that demonstrates how to properly close matplotlib figures to ensure the terminal exits properly.
+## Key Features
 
-3. **test_terminal_fix.py**: A test script that runs try778.py with a smaller number of episodes and ensures all matplotlib figures are closed.
+- **Grid Environment**: Discrete grid world simulation for AGV navigation
+- **Graph-Based Planning**: Shortest path algorithms with collision avoidance
+- **Rule-Based Coordination**: Priority-based and reservation systems [[3]]
+- **RL Coordination**: Multi-agent reinforcement learning for dynamic coordination [[6]]
+- **Collision Avoidance**: Multiple strategies for safe multi-AGV operation
+- **Task Assignment**: Efficient task distribution among AGV fleet
 
-## Key Points
+## Technology Stack
 
-To prevent terminal hanging issues:
+- **Environment**: Grid-based simulation with graph representation
+- **Traditional Methods**: A*, Dijkstra, priority-based coordination
+- **RL Framework**: Multi-agent reinforcement learning [[6]]
+- **Coordination**: Decentralized and centralized approaches [[8]]
 
-1. Always use `plt.close('all')` at the end of scripts that use matplotlib
-2. Avoid keeping references to animation objects unless necessary
-3. Use `plt.ion()` and `plt.ioff()` appropriately
+## System Architecture
 
-## Quick Fix
+- **Grid Environment**: Discrete workspace representation
+- **Graph Network**: Node-edge pathfinding structure
+- **Rule Engine**: Priority and reservation-based coordination
+- **RL Agent**: Learning-based coordination policies
+- **Multi-AGV Fleet**: Coordinated autonomous vehicle management
 
-If your terminal is currently hanging, press `Ctrl+C` to interrupt the running process. If that doesn't work, refer to terminal_guide.md for more methods.
+## Coordination Methods
+
+- **Rule-Based**: Priority systems, traffic rules, reservation protocols
+- **RL-Based**: Multi-agent learning for adaptive coordination [[6]]
+- **Hybrid**: Combined approaches for robust performance
+- **Collision Avoidance**: Multiple safety mechanisms
+
+---
+
+*Multi-AGV coordination system comparing traditional and learning-based approaches for industrial automation.*
