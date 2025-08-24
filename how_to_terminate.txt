@@ -1,0 +1,38 @@
+# IndexError Fix in Q-Learning Implementation
+
+## Summary of the Issue
+The original code was encountering an IndexError during Q-learning training:
+```
+IndexError: index 68038 is out of bounds for axis 0 with size 24389
+```
+
+## Root Cause
+The issue was in the `state_to_index` function in try778.py. The function was incorporating node degrees into the index calculation when a graph was provided, which could lead to indices larger than the Q-table size.
+
+## Solution Implemented
+The fix was to remove the node degree multiplication from the index calculation, ensuring that the indices stay within the bounds of the Q-table size.
+
+## Files Modified
+- try778.py: Modified the `state_to_index` function to remove node degree multiplication
+
+## Files Created for Testing and Documentation
+- test_fix.py: A script to run the main function and verify the fix
+- test_terminal_fix.py: A script to specifically test the `state_to_index` function
+- terminal_exit_example.py: Instructions on how to run the test script
+- terminal_guide.md: Comprehensive documentation of the issue and solution
+
+## How to Test the Fix
+1. Run the test script:
+   ```
+   python test_fix.py
+   ```
+   This should execute without the previous IndexError.
+
+2. Run the specific test for the `state_to_index` function:
+   ```
+   python test_terminal_fix.py
+   ```
+   This will verify that the function produces indices within the expected bounds.
+
+## Conclusion
+The fix ensures that state indices are properly bounded, preventing the IndexError and allowing the Q-learning algorithm to run successfully.

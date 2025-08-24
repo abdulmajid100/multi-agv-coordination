@@ -1,6 +1,6 @@
 import numpy as np
 import random
-from grid_env_c import GridEnv
+from archive.grid_env_c import GridEnv
 
 # Q-learning parameters
 alpha = 0.05  # Learning rate

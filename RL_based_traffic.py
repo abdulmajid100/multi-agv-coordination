@@ -2,7 +2,7 @@ import numpy as np
 import random
 import networkx as nx
 import matplotlib.pyplot as plt
-from graph_env_c_new import GraphEnv
+from archive.graph_env_c_new import GraphEnv
 
 # Q-learning hyperparameters
 alpha = 0.05        # Learning rate

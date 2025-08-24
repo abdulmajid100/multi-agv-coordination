@@ -164,6 +164,7 @@ class AGVSimulation:
         # Check for nodes shared by 3 or more AGVs (including the current AGV)
         # First, count how many AGVs share each node
         node_sharing_count = {}
+        print(shared_nodes_with_others)
         for other_agv, shared_nodes in shared_nodes_with_others.items():
             for node in shared_nodes:
                 if node not in node_sharing_count:
@@ -198,7 +199,7 @@ class AGVSimulation:
         # Track consecutive failed attempts to detect deadlocks
         consecutive_failures = 0
         max_consecutive_failures = 1000000  # Maximum number of consecutive failures before trying alternative path
-        print(self.agv_tasks[agv], agv)
+        #print(self.agv_tasks[agv], agv)
         while self.agv_tasks[agv]:
             current_task = self.agv_tasks[agv][0]
             #print(current_task)
@@ -258,7 +259,7 @@ class AGVSimulation:
         # Track consecutive failed attempts to detect deadlocks
         consecutive_failures = 0
         max_consecutive_failures = 1000000  # Maximum number of consecutive failures before trying alternative path
-        print(self.agv_tasks[agv], agv)
+        #print(self.agv_tasks[agv], agv)
         while self.agv_tasks[agv]:
             current_task = self.agv_tasks[agv][0]
 
