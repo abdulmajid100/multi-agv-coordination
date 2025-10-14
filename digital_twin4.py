@@ -68,40 +68,48 @@ def detect_deadlock(waiting_agvs):
 
     for node in set(waiting_nodes):
         conflicting_agvs = [agv for agv, info in waiting_agvs.items() if info['next_node'] == node]
-        if len(conflicting_agvs) > 1:
+        if len(conflicting_agvs) > 2:
             conflicts[node] = conflicting_agvs
 
     return conflicts
 
 
-def resolve_deadlock(conflicts, waiting_agvs, agv_tasks, resource_states):
+def resolve_deadlock(conflicts, waiting_agvs, agv_tasks, resource_states, agv_history):
     """
-    Resolve deadlocks by making the last AGV to wait backtrack one node.
+    Resolve deadlocks by making the last AGV to wait backtrack one node using movement history.
     """
     for conflict_node, conflicting_agvs in conflicts.items():
         # Pick the last AGV to enter the waiting state (last in the list)
         last_agv = conflicting_agvs[-1]
-        print(last_agv, "last agv")
-        # Make the last AGV backtrack one node
+        print(f"Last AGV to wait: {last_agv}")
+
+        # Get current node and movement history
         current_node = waiting_agvs[last_agv]['current_node']
-        print(current_node, "current node")
-        # Find the previous node in the path
-        current_task = agv_tasks[last_agv][0]
-        current_index = current_task.index(current_node)
-        print(current_index, "current index")
-        if current_index > 0:
-            previous_node = current_task[current_index - 1]
-            print(previous_node, "previous node")
+        print(f"Current node: {current_node}")
+
+        # Check if AGV has movement history to backtrack
+        if len(agv_history[last_agv]) > 1:
+            # Get the previous node from history (second to last)
+            previous_node = agv_history[last_agv][-2]
+            print(f"Previous node from history: {previous_node}")
+
             # Free the current node and move back
             resource_states[current_node] = 0
             resource_states[previous_node] = last_agv
 
-            # Insert the previous node back into the task
+            # Insert the current node back into the task (so AGV can try again later)
             agv_tasks[last_agv][0].insert(0, previous_node)
+
+            # Remove the last entry from history (backtrack)
+            agv_history[last_agv].pop()
 
             print(f"Resolving conflict at node {conflict_node}: {last_agv} backtracks to {previous_node}")
 
             # Remove from waiting list
+            del waiting_agvs[last_agv]
+        else:
+            print(f"Cannot backtrack {last_agv} - no movement history available")
+            # If no history, just remove from waiting (will try again next iteration)
             del waiting_agvs[last_agv]
 
 
@@ -113,11 +121,15 @@ def simulate_digital_twin():
     agv_tasks = copy.deepcopy(original_agv_tasks)
     resource_states = {node: 0 for node in G.nodes()}
 
-    # Reserve starting nodes for each AGV
+    # Track movement history for each AGV
+    agv_history = {agv: [] for agv in agv_tasks.keys()}
+
+    # Reserve starting nodes for each AGV and initialize history
     for agv, tasks in agv_tasks.items():
         if tasks and tasks[0]:
             starting_node = tasks[0][0]
             resource_states[starting_node] = agv
+            agv_history[agv].append(starting_node)  # Add starting node to history
 
     conflict_free_sequences = []
     waiting_agvs = {}
@@ -127,7 +139,7 @@ def simulate_digital_twin():
     while any(tasks for tasks in agv_tasks.values()) and iteration < max_iterations:
         iteration += 1
         moved_this_round = False
-
+        print(agv_tasks, "agv777")
         # Move each AGV if possible
         for agv, tasks in agv_tasks.items():
             if agv in waiting_agvs:
@@ -173,7 +185,11 @@ def simulate_digital_twin():
                     if not tasks[0]:  # If the current task is completed
                         tasks.pop(0)
 
+                    # Add next node to movement history
+                    agv_history[agv].append(next_node)
+
                     conflict_free_sequences.append((agv, current_node, next_node, 'move'))
+
                     print(f"{agv} moves from {current_node} to {next_node}")
                     moved_this_round = True
                 else:
@@ -188,11 +204,10 @@ def simulate_digital_twin():
         # Detect and resolve deadlocks
         if waiting_agvs:
             conflicts = detect_deadlock(waiting_agvs)
-            print(agv_tasks, "agv tasks")
-            print(conflicts, "conflicts")
+            print(f"AGV History: {agv_history}")
+            print(f"Conflicts: {conflicts}")
             if conflicts:
-                resolve_deadlock(conflicts, waiting_agvs, agv_tasks, resource_states)
-                #print(resolve_deadlock(conflicts, waiting_agvs, agv_tasks, resource_states))
+                resolve_deadlock(conflicts, waiting_agvs, agv_tasks, resource_states, agv_history)
                 moved_this_round = True
             else:
                 # Clear waiting AGVs if no conflicts (they can try again next round)
