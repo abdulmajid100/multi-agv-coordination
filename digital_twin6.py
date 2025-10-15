@@ -114,13 +114,10 @@ def start_backtracking(agv, conflict_node, waiting_agvs, agv_tasks, resource_sta
     current_node = waiting_agvs[agv]['current_node']
 
     # Check if AGV has movement history to backtrack
-    if len(agv_history[agv]) >= 1:
+    if len(agv_history[agv][-1]) > 1:
         # Get the previous node from current subtask history
-        if len(agv_history[agv][-1]) > 1:
-            previous_node = agv_history[agv][-1][-2]
-        else:
-            previous_node = agv_history[agv][-2][-1]
-
+        previous_node = agv_history[agv][-1][-2]
+        print(previous_node, "prev node")
         # Free the current node and move back
         resource_states[current_node] = 0
         resource_states[previous_node] = agv
@@ -142,7 +139,7 @@ def start_backtracking(agv, conflict_node, waiting_agvs, agv_tasks, resource_sta
         # Remove from waiting list
         if agv in waiting_agvs:
             del waiting_agvs[agv]
-    elif len(agv_history[agv]) <= 1 and len(agv_history[agv][-1]) <= 1:
+    else:
         print(f"Cannot backtrack {agv} - no movement history available")
         if agv in waiting_agvs:
             del waiting_agvs[agv]
@@ -153,13 +150,10 @@ def backtrack_further(agv, agv_tasks, resource_states, agv_history, backtracked_
     Make an AGV backtrack one more step.
     """
     # Check if AGV can backtrack further
-    if len(agv_history[agv]) >= 1:
-        if len(agv_history[agv][-1]) > 1:
-            current_node = agv_history[agv][-1][-1]  # Last node in current subtask
-            previous_node = agv_history[agv][-1][-2]  # Second-to-last node in current subtask
-        else:
-            current_node = agv_history[agv][-1][-1]
-            previous_node = agv_history[agv][-2][-1]
+    if len(agv_history[agv][-1]) > 1:
+        current_node = agv_history[agv][-1][-1]  # Last node in current subtask
+        previous_node = agv_history[agv][-1][-2]  # Second-to-last node in current subtask
+        print(previous_node, "prev node100")
         # Free the current node and move back
         resource_states[current_node] = 0
         resource_states[previous_node] = agv
@@ -204,7 +198,8 @@ def resolve_deadlock(conflicts, waiting_agvs, agv_tasks, resource_states, agv_hi
     """
     for conflict_node, conflicting_agvs in conflicts.items():
         # Pick the last AGV to enter the waiting state (last in the list)
-        last_agv = max(conflicting_agvs, key=lambda agv: waiting_agvs[agv]['waiting_since'])
+        print(waiting_agvs)
+        last_agv = conflicting_agvs[-1]
 
         # Check if this AGV is already backtracked and waiting
         if last_agv in backtracked_agvs:
@@ -332,9 +327,9 @@ def simulate_digital_twin():
                     # AGV is waiting
                     waiting_agvs[agv] = {
                         'current_node': current_node,
-                        'next_node': next_node,
-                        'waiting_since': iteration  # Track when AGV started waiting
+                        'next_node': next_node
                     }
+                    print(waiting_agvs, "WAITING AGVS")
                     conflict_free_sequences.append((agv, current_node, current_node, 'wait'))
                     print(f"{agv} waiting at {current_node}")
 
