@@ -61,23 +61,91 @@ def can_move(agv, shared_nodes_with_others, other_agvs, current_node, next_node,
 
 
 # ============= DEADLOCK DETECTION FUNCTIONS =============
-def detect_deadlock(waiting_agvs, waiting_order):
+def detect_intersection_deadlock(waiting_agvs, waiting_order, agv_tasks):
     """
-    Detect if there is a deadlock (multiple AGVs waiting for the same node).
-    Only triggers for 3+ AGV conflicts.
+    Simple intersection deadlock detection.
+    Detects when AGVs around an intersection create circular dependencies.
     """
+    waiting_nodes = [agv_info['next_node'] for agv_info in waiting_agvs.values()]
+    conflicts = {}
+
+    for intersection_node in set(waiting_nodes):
+        # Get AGVs waiting for this intersection
+        conflicting_agvs = []
+        for agv in reversed(waiting_order):
+            if agv in waiting_agvs and waiting_agvs[agv]['next_node'] == intersection_node:
+                conflicting_agvs.append(agv)
+
+        if len(conflicting_agvs) >= 3:  # Need at least 3 for circular deadlock
+            # Check if they form a circular pattern
+            if is_circular_deadlock(conflicting_agvs, waiting_agvs, intersection_node, agv_tasks):
+                print(f"Circular deadlock at intersection {intersection_node}")
+                conflicts[intersection_node] = conflicting_agvs
+
+    return conflicts
+
+
+def is_circular_deadlock(conflicting_agvs, waiting_agvs, intersection_node, agv_tasks):
+    """
+    Check if AGVs form a circular pattern around the intersection.
+    Example: AGV1(13->14->24), AGV2(24->14->15), AGV3(15->14->13)
+    """
+    # Get where each AGV wants to go AFTER the intersection
+    agv_destinations = {}
+
+    for agv in conflicting_agvs:
+        current_node = waiting_agvs[agv]['current_node']
+
+        # Find where this AGV wants to go after the intersection
+        current_task = agv_tasks[agv][0] if agv_tasks[agv] else []
+
+        if intersection_node in current_task:
+            intersection_index = current_task.index(intersection_node)
+            if intersection_index < len(current_task) - 1:
+                destination_after_intersection = current_task[intersection_index + 1]
+                agv_destinations[agv] = {
+                    'current': current_node,
+                    'destination': destination_after_intersection
+                }
+
+    # Check for circular pattern: A wants B's position, B wants C's position, etc.
+    if len(agv_destinations) >= 3:
+        current_positions = [info['current'] for info in agv_destinations.values()]
+        destinations = [info['destination'] for info in agv_destinations.values()]
+
+        # Simple check: if destinations overlap with current positions, it's likely circular
+        overlap = set(current_positions) & set(destinations)
+        print(len(overlap), "overlap")
+        if len(overlap) >= 3:  # At least 2 positions are both current and destination
+            return True
+
+    return False
+
+
+# Update your main detect_deadlock function
+def detect_deadlock(waiting_agvs, waiting_order, agv_tasks):
+    """
+    Enhanced deadlock detection with intersection circular pattern detection.
+    """
+    # First check for intersection circular deadlocks
+    intersection_conflicts = detect_intersection_deadlock(waiting_agvs, waiting_order, agv_tasks)
+    if intersection_conflicts:
+        return intersection_conflicts
+
+    """# Fallback to simple conflict detection
     waiting_nodes = [agv_info['next_node'] for agv_info in waiting_agvs.values()]
     conflicts = {}
 
     for node in set(waiting_nodes):
         conflicting_agvs = []
-        for agv in reversed(waiting_order):  # REVERSE the order!
+        for agv in reversed(waiting_order):
             if agv in waiting_agvs and waiting_agvs[agv]['next_node'] == node:
                 conflicting_agvs.append(agv)
-        if len(conflicting_agvs) > 2:  # Only handle 3+ AGV deadlocks
+
+        if len(conflicting_agvs) >= 3:  # Standard 3+ AGV conflicts
             conflicts[node] = conflicting_agvs
 
-    return conflicts
+    return conflicts"""
 
 
 def check_conflict_resolved(conflict_node, resource_states):
@@ -398,7 +466,7 @@ def simulate_digital_twin():
                     print(f"{agv} waiting at {current_node}")
 
         if waiting_agvs or backtracked_agvs:
-            conflicts = detect_deadlock(waiting_agvs, waiting_order)
+            conflicts = detect_deadlock(waiting_agvs, waiting_order, agv_tasks)
             print(f"Conflicts detected: {conflicts}")
             print(agv_history, "AGV HISTORY")
 
