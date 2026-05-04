@@ -290,7 +290,8 @@ def simulate_digital_twin():
     waiting_order = []
     max_iterations = 1000
     iteration = 0
-
+    deadlock_log = []
+    full_iteration_log = []
     while any(tasks for tasks in agv_tasks.values()) and iteration < max_iterations:
         iteration += 1
         moved_this_round = False
@@ -315,6 +316,15 @@ def simulate_digital_twin():
 
                 if frame_to_cut != -1:
                     print(f"Cutting frames from {frame_to_cut} onwards for {agv}")
+                    deadlock_log.append({
+                        'type': 'resolution',
+                        'iteration': iteration,
+                        'frame_cut_at': frame_to_cut,
+                        'agv': agv,
+                        'resolution_node': resolution_node,
+                        'conflict_node': conflict_node
+                    })
+
                     # Cut the sequences
                     conflict_free_sequences = conflict_free_sequences[:frame_to_cut]
 
@@ -402,8 +412,22 @@ def simulate_digital_twin():
 
                     frame_actions[agv] = (current_node, current_node, 'wait')
                     print(f"{agv} waiting at {current_node}")
+        # Record to full log AFTER all deadlock/backtracking/resolution logic
+        is_deadlock_this_iter = False
+        deadlock_conflict_node = None
+        deadlock_agvs_list = None
 
         if frame_actions:
+            full_iteration_log.append({
+                'iteration': iteration,
+                'frame_actions': copy.deepcopy(frame_actions),
+                'is_backtracking': bool(backtracked_agvs),
+                'is_deadlock': False,
+                'backtracked_agvs': dict(backtracked_agvs),
+                'forced_waiting': dict(forced_waiting_agvs)
+            })
+        if frame_actions:
+
             conflict_free_sequences.append(frame_actions)
 
         if waiting_agvs or backtracked_agvs:
@@ -414,6 +438,19 @@ def simulate_digital_twin():
                 for conflict_node, conflicting_agvs in conflicts.items():
                     last_agv = conflicting_agvs[-1]
                     print(f"New deadlock detected at {conflict_node}. {last_agv} will start backtracking.")
+                    # Mark this iteration as deadlock in full log
+                    if full_iteration_log:
+                        full_iteration_log[-1]['is_deadlock'] = True
+                        full_iteration_log[-1]['conflict_node'] = conflict_node
+                        full_iteration_log[-1]['conflicting_agvs'] = list(conflicting_agvs)
+
+                    deadlock_log.append({
+                        'type': 'deadlock',
+                        'iteration': iteration,
+                        'conflict_node': conflict_node,
+                        'conflicting_agvs': list(conflicting_agvs),
+                        'backtrack_agv': last_agv
+                    })
                     start_backtracking(last_agv, conflict_node, waiting_agvs, waiting_order, agv_tasks, resource_states,
                                        agv_history, backtracked_agvs, resolution_points)
                     moved_this_round = True
@@ -430,6 +467,14 @@ def simulate_digital_twin():
 
                     if frame_to_cut != -1:
                         print(f"Cutting frames from {frame_to_cut} onwards for {agv}")
+                        deadlock_log.append({
+                            'type': 'resolution',
+                            'iteration': iteration,
+                            'frame_cut_at': frame_to_cut,
+                            'agv': agv,
+                            'resolution_node': resolution_node,
+                            'conflict_node': conflict_node
+                        })
                         conflict_free_sequences = conflict_free_sequences[:frame_to_cut]
                         forced_waiting_agvs[agv] = {
                             'wait_at': resolution_node,
@@ -451,13 +496,25 @@ def simulate_digital_twin():
         if not moved_this_round and not waiting_agvs and not backtracked_agvs:
             break
 
-    return conflict_free_sequences
+    return conflict_free_sequences, deadlock_log, full_iteration_log
 
-print(simulate_digital_twin(), "skal;a")
+
+
 # ============= SIMULATION EXECUTION =============
 print("Starting digital twin simulation...")
-conflict_free_sequences = simulate_digital_twin()
+conflict_free_sequences, deadlock_log, full_iteration_log = simulate_digital_twin()
+
+
 print(f"Simulation complete. Generated {len(conflict_free_sequences)} frames.")
+
+print("\n=== FULL ITERATION LOG DEBUG ===")
+for i, entry in enumerate(full_iteration_log):
+    fw = entry['forced_waiting']
+    bt = entry['is_backtracking']
+    dl = entry['is_deadlock']
+    actions = {agv: act for agv, (f, t, act) in entry['frame_actions'].items()}
+    if fw or bt or dl:
+        print(f"Index {i} | Iter {entry['iteration']} | Actions: {actions} | Deadlock: {dl} | Backtracking: {bt} | ForcedWait: {fw}")
 
 # ============= VISUALIZATION SETUP =============
 fig, ax = plt.subplots(figsize=(12, 8))
@@ -548,81 +605,135 @@ plt.tight_layout()
 plt.savefig("graph_layout.png", dpi=150)
 plt.show()
 
-# ---- GRAPH 2: AGV Position Timeline ----
-position_history = build_position_history(conflict_free_sequences)
+# ---- GRAPH 2: FULL Iteration Timeline with Algorithmic Detection ----
+full_position_history = {'AGV1': [], 'AGV2': [], 'AGV3': []}
 
-fig2, ax2 = plt.subplots(figsize=(14, 5))
-colors = {'AGV1': 'red', 'AGV2': 'green', 'AGV3': 'blue'}
+for entry in full_iteration_log:
+    frame = entry['frame_actions']
+    for agv in full_position_history.keys():
+        if agv in frame:
+            _, to_node, _ = frame[agv]
+            full_position_history[agv].append(to_node)
+        elif full_position_history[agv]:
+            full_position_history[agv].append(full_position_history[agv][-1])
 
-for agv, positions in position_history.items():
+fig2, ax2 = plt.subplots(figsize=(16, 6))
+agv_colors = {'AGV1': 'red', 'AGV2': 'green', 'AGV3': 'blue'}
+
+for agv, positions in full_position_history.items():
     ax2.plot(range(len(positions)), positions, marker='o', markersize=3,
-             label=agv, color=colors[agv], linewidth=1.5)
+             label=agv, color=agv_colors[agv], linewidth=1.5)
 
-    for i in range(1, len(positions)):
-        if positions[i] == positions[i-1]:
-            ax2.axvspan(i-0.5, i+0.5, alpha=0.1, color=colors[agv])
+y_max = max(max(p) for p in full_position_history.values())
+y_min = min(min(p) for p in full_position_history.values())
 
-ax2.set_xlabel("Frame (Time Step)", fontsize=11)
-ax2.set_ylabel("Node Position", fontsize=11)
-ax2.set_title("AGV Position Over Time — Conflict-Free Sequences", fontsize=13, fontweight='bold')
-ax2.legend(fontsize=10)
-ax2.grid(True, alpha=0.3)
-plt.tight_layout()
-plt.savefig("agv_timeline.png", dpi=150)
-plt.show()
+# ========== ALGORITHMIC DETECTION ==========
 
-# ---- GRAPH 2: AGV Position Timeline with Deadlock & Resolution ----
-position_history = build_position_history(conflict_free_sequences)
+# 1. Detect deadlock indices
+deadlock_indices = []
+for i, entry in enumerate(full_iteration_log):
+    if entry['is_deadlock']:
+        deadlock_indices.append(i)
 
-fig2, ax2 = plt.subplots(figsize=(14, 5))
-colors = {'AGV1': 'red', 'AGV2': 'green', 'AGV3': 'blue'}
+# 2. Detect backtracking indices
+backtrack_indices = []
+for i, entry in enumerate(full_iteration_log):
+    if entry['is_backtracking']:
+        backtrack_indices.append(i)
 
-# Plot position lines
-for agv, positions in position_history.items():
-    ax2.plot(range(len(positions)), positions, marker='o', markersize=3,
-             label=agv, color=colors[agv], linewidth=1.5)
+# 3. Detect forced waiting indices
+# Debug: print what's actually in the frame_actions for forced waiting entries
+print("\n=== FORCED WAITING DEBUG ===")
+forced_wait_indices = []
+for i, entry in enumerate(full_iteration_log):
+    if entry['forced_waiting']:
+        for agv, wait_info in entry['forced_waiting'].items():
+            if agv in entry['frame_actions']:
+                frame_data = entry['frame_actions'][agv]
+                print(f"Index {i} | Iter {entry['iteration']} | {agv} frame_data: {frame_data} | wait_info: {wait_info}")
 
-# Detect deadlock and resolution frames from the sequences
-deadlock_frames = []
-resolution_frames = []
-backtrack_frames = []
+# ========== DRAW EVENTS ==========
 
-for i, frame in enumerate(conflict_free_sequences):
-    for agv, (from_node, to_node, action) in frame.items():
-        if action == 'backtracked':
-            backtrack_frames.append((i, to_node, agv))
-        if action == 'wait':
-            # Check if multiple AGVs are waiting in the same frame
-            waiting_count = sum(1 for a, (f, t, act) in frame.items() if act == 'wait')
-            if waiting_count >= 2 and (not deadlock_frames or deadlock_frames[-1][0] != i):
-                deadlock_frames.append((i, to_node, agv))
+# Draw deadlock zones
+for idx in deadlock_indices:
+    ax2.axvspan(idx - 0.5, idx + 0.5, alpha=0.3, color='red')
 
-# Find resolution frames (first 'move' after a backtrack sequence)
-backtrack_agvs_set = set(agv for _, _, agv in backtrack_frames)
-for agv in backtrack_agvs_set:
-    bt_indices = [i for i, _, a in backtrack_frames if a == agv]
-    if bt_indices:
-        last_bt = max(bt_indices)
-        for j in range(last_bt + 1, len(conflict_free_sequences)):
-            if agv in conflict_free_sequences[j]:
-                _, _, action = conflict_free_sequences[j][agv]
-                if action == 'move':
-                    resolution_frames.append((j, conflict_free_sequences[j][agv][1], agv))
+# Draw backtracking zones (merge consecutive)
+if backtrack_indices:
+    bt_start = backtrack_indices[0]
+    for j in range(1, len(backtrack_indices)):
+        if backtrack_indices[j] != backtrack_indices[j - 1] + 1:
+            ax2.axvspan(bt_start - 0.5, backtrack_indices[j - 1] + 0.5, alpha=0.2, color='orange')
+            bt_start = backtrack_indices[j]
+    ax2.axvspan(bt_start - 0.5, backtrack_indices[-1] + 0.5, alpha=0.2, color='orange')
+
+# Resolution: first non-backtracking index after backtracking ends
+if backtrack_indices:
+    last_bt = backtrack_indices[-1]
+    resolution_idx = last_bt + 1
+    if resolution_idx < len(full_iteration_log):
+        ax2.axvline(x=resolution_idx, color='limegreen', linestyle='--', linewidth=2, alpha=0.8)
+
+# Placeholder for forced waiting - will fix after seeing debug output
+# (leaving graph without forced waiting for now)
+# ===== FORCED WAITING DETECTION AND DRAWING =====
+# ===== 4. FORCED WAITING =====
+"""forced_wait_indices = []
+for i, entry in enumerate(full_iteration_log):
+    if entry['forced_waiting'] and not entry['is_backtracking']:
+        frame = entry['frame_actions']
+        for agv, wait_info in entry['forced_waiting'].items():
+            if agv in frame:
+                from_node, to_node, action = frame[agv]
+                if action == 'wait':
+                    forced_wait_indices.append(i)
                     break
 
-# Draw deadlock zones (red shading)
-for frame_idx, node, agv in deadlock_frames:
-    ax2.axvspan(frame_idx - 0.5, frame_idx + 0.5, alpha=0.2, color='red')
+print(f"FORCED WAIT INDICES FOUND: {forced_wait_indices}")
 
-# Draw backtrack zones (orange shading)
-for frame_idx, node, agv in backtrack_frames:
-    ax2.axvspan(frame_idx - 0.5, frame_idx + 0.5, alpha=0.2, color='orange')
+if forced_wait_indices:
+    fw_start = forced_wait_indices[0]
+    for j in range(1, len(forced_wait_indices)):
+        if forced_wait_indices[j] != forced_wait_indices[j - 1] + 1:
+            ax2.axvspan(fw_start - 0.5, forced_wait_indices[j - 1] + 0.5, alpha=0.2, color='gold')
+            fw_start = forced_wait_indices[j]
+    ax2.axvspan(fw_start - 0.5, forced_wait_indices[-1] + 0.5, alpha=0.2, color='gold')
 
-# Draw resolution points (green vertical lines)
-for frame_idx, node, agv in resolution_frames:
-    ax2.axvline(x=frame_idx, color='green', linestyle='--', linewidth=1.5, alpha=0.7)
+    mid_fw = forced_wait_indices[len(forced_wait_indices) // 2]
+    wait_node = full_position_history['AGV1'][mid_fw]
+    ax2.annotate(f'AGV1 forced wait\nat node {wait_node}\n(until path to node 24 clear)',
+                 xy=(mid_fw, wait_node), fontsize=7, fontstyle='italic', color='goldenrod', ha='center',
+                 arrowprops=dict(arrowstyle='->', color='goldenrod', lw=1),
+                 xytext=(mid_fw + 5, wait_node + 3))"""
 
-# Add legend entries for the zones
+
+# ========== ANNOTATIONS ==========
+if deadlock_indices:
+    idx = deadlock_indices[0]
+    entry = full_iteration_log[idx]
+    ax2.annotate(
+        f"Circular Deadlock\nat node {entry.get('conflict_node', '?')}\n{', '.join(entry.get('conflicting_agvs', []))}",
+        xy=(idx, y_max), fontsize=8, fontweight='bold', color='darkred', ha='center',
+        arrowprops=dict(arrowstyle='->', color='darkred', lw=1.5),
+        xytext=(idx - 5, y_max + 2))
+
+if backtrack_indices:
+    mid = backtrack_indices[len(backtrack_indices) // 2]
+    ax2.annotate('Backtracking Phase',
+                 xy=(mid, full_position_history['AGV1'][mid]),
+                 fontsize=7, fontstyle='italic', color='darkorange', ha='center',
+                 arrowprops=dict(arrowstyle='->', color='darkorange', lw=1),
+                 xytext=(mid - 1, y_min + 2))
+
+if backtrack_indices:
+    res_idx = backtrack_indices[-1] + 1
+    if res_idx < len(full_iteration_log):
+        ax2.annotate('Resolution\n(Frame cut applied)',
+                     xy=(res_idx, y_max), fontsize=8, fontweight='bold', color='darkgreen', ha='left',
+                     arrowprops=dict(arrowstyle='->', color='darkgreen', lw=1.5),
+                     xytext=(res_idx + 2, y_max - 2))
+
+# ========== LEGEND ==========
 from matplotlib.patches import Patch
 from matplotlib.lines import Line2D
 
@@ -630,244 +741,18 @@ legend_elements = [
     Line2D([0], [0], color='red', linewidth=1.5, label='AGV1'),
     Line2D([0], [0], color='green', linewidth=1.5, label='AGV2'),
     Line2D([0], [0], color='blue', linewidth=1.5, label='AGV3'),
-    Patch(facecolor='red', alpha=0.2, label='Deadlock Detected'),
-    Patch(facecolor='orange', alpha=0.2, label='Backtracking'),
-    Line2D([0], [0], color='green', linestyle='--', linewidth=1.5, label='Resolution Point'),
+    Patch(facecolor='red', alpha=0.3, label='Circular Deadlock Detected'),
+    Patch(facecolor='orange', alpha=0.2, label='Backtracking Phase'),
+    #Patch(facecolor='gold', alpha=0.2, label='Forced Waiting Phase'),
+    Line2D([0], [0], color='limegreen', linestyle='--', linewidth=2, label='Resolution Point'),
 ]
 
 ax2.legend(handles=legend_elements, fontsize=9, loc='upper right')
-ax2.set_xlabel("Frame (Time Step)", fontsize=11)
+ax2.set_xlabel("Iteration (Time Step)", fontsize=11)
 ax2.set_ylabel("Node Position", fontsize=11)
-ax2.set_title("AGV Position Over Time — Deadlock Detection & Resolution", fontsize=13, fontweight='bold')
+ax2.set_title("Full Simulation Timeline — Circular Deadlock Detection, Backtracking & Resolution",
+              fontsize=12, fontweight='bold')
 ax2.grid(True, alpha=0.3)
 plt.tight_layout()
-plt.savefig("agv_deadlock_timeline.png", dpi=150)
-plt.show()
-
-# ---- GRAPH 2: AGV Position Timeline with Circular Deadlock & Resolution ----
-position_history = build_position_history(conflict_free_sequences)
-
-fig2, ax2 = plt.subplots(figsize=(14, 5))
-colors = {'AGV1': 'red', 'AGV2': 'green', 'AGV3': 'blue'}
-
-# Plot position lines
-for agv, positions in position_history.items():
-    ax2.plot(range(len(positions)), positions, marker='o', markersize=3,
-             label=agv, color=colors[agv], linewidth=1.5)
-
-# Detect circular deadlock and resolution events from sequences
-deadlock_events = []    # (frame_index, node)
-backtrack_ranges = {}   # agv: (start_frame, end_frame)
-resolution_events = []  # (frame_index, agv)
-
-# Find circular deadlock: frame where ALL 3 AGVs are waiting simultaneously
-for i, frame in enumerate(conflict_free_sequences):
-    waiting_agvs_in_frame = [agv for agv, (f, t, action) in frame.items() if action == 'wait']
-    if len(waiting_agvs_in_frame) >= 3:
-        # All 3 AGVs waiting = circular deadlock
-        # Get the common target node (intersection node)
-        nodes_at = [frame[agv][0] for agv in waiting_agvs_in_frame]
-        deadlock_events.append((i, nodes_at))
-
-# Find backtracking start and end frames per AGV
-for agv in colors.keys():
-    bt_start = None
-    bt_end = None
-    for i, frame in enumerate(conflict_free_sequences):
-        if agv in frame:
-            _, _, action = frame[agv]
-            if action == 'backtracked':
-                if bt_start is None:
-                    bt_start = i
-                bt_end = i
-    if bt_start is not None:
-        backtrack_ranges[agv] = (bt_start, bt_end)
-
-# Find resolution: first 'move' frame after backtracking ends for each backtracked AGV
-for agv, (bt_start, bt_end) in backtrack_ranges.items():
-    for j in range(bt_end + 1, len(conflict_free_sequences)):
-        if agv in conflict_free_sequences[j]:
-            _, _, action = conflict_free_sequences[j][agv]
-            if action == 'move':
-                resolution_events.append((j, agv))
-                break
-
-# ---- Draw circular deadlock zone (red shading) ----
-for frame_idx, nodes_at in deadlock_events:
-    ax2.axvspan(frame_idx - 0.5, frame_idx + 0.5, alpha=0.25, color='red')
-
-# ---- Draw backtracking zone (orange shading) ----
-for agv, (bt_start, bt_end) in backtrack_ranges.items():
-    ax2.axvspan(bt_start - 0.5, bt_end + 0.5, alpha=0.2, color='orange')
-
-# ---- Draw resolution point (green dashed line) ----
-for frame_idx, agv in resolution_events:
-    ax2.axvline(x=frame_idx, color='green', linestyle='--', linewidth=2, alpha=0.8)
-
-# ---- Annotate deadlock event ----
-for frame_idx, nodes_at in deadlock_events:
-    ax2.annotate('Circular\nDeadlock', xy=(frame_idx, max(max(p) for p in position_history.values())),
-                 fontsize=8, fontweight='bold', color='darkred', ha='center',
-                 arrowprops=dict(arrowstyle='->', color='darkred'),
-                 xytext=(frame_idx + 2, max(max(p) for p in position_history.values()) + 1))
-
-# ---- Annotate resolution event ----
-for frame_idx, agv in resolution_events:
-    ax2.annotate('Resolution', xy=(frame_idx, min(min(p) for p in position_history.values())),
-                 fontsize=8, fontweight='bold', color='darkgreen', ha='center',
-                 arrowprops=dict(arrowstyle='->', color='darkgreen'),
-                 xytext=(frame_idx + 2, min(min(p) for p in position_history.values()) - 1))
-
-# ---- Custom legend ----
-from matplotlib.patches import Patch
-from matplotlib.lines import Line2D
-
-legend_elements = [
-    Line2D([0], [0], color='red', linewidth=1.5, label='AGV1'),
-    Line2D([0], [0], color='green', linewidth=1.5, label='AGV2'),
-    Line2D([0], [0], color='blue', linewidth=1.5, label='AGV3'),
-    Patch(facecolor='red', alpha=0.25, label='Circular Deadlock'),
-    Patch(facecolor='orange', alpha=0.2, label='Backtracking'),
-    Line2D([0], [0], color='green', linestyle='--', linewidth=2, label='Resolution'),
-]
-
-ax2.legend(handles=legend_elements, fontsize=9, loc='upper right')
-ax2.set_xlabel("Frame (Time Step)", fontsize=11)
-ax2.set_ylabel("Node Position", fontsize=11)
-ax2.set_title("AGV Position Over Time — Circular Deadlock Detection & Resolution", fontsize=13, fontweight='bold')
-ax2.grid(True, alpha=0.3)
-plt.tight_layout()
-plt.savefig("agv_circular_deadlock_timeline.png", dpi=150)
-plt.show()
-
-# ---- GRAPH 2: AGV Position Timeline with Circular Deadlock & Resolution ----
-position_history = build_position_history(conflict_free_sequences)
-
-fig2, ax2 = plt.subplots(figsize=(14, 5))
-colors = {'AGV1': 'red', 'AGV2': 'green', 'AGV3': 'blue'}
-
-# Plot position lines
-for agv, positions in position_history.items():
-    ax2.plot(range(len(positions)), positions, marker='o', markersize=3,
-             label=agv, color=colors[agv], linewidth=1.5)
-
-# ---- DEBUG: Print all frame actions to understand the data ----
-print("\n=== FRAME ANALYSIS ===")
-deadlock_frames = []
-backtrack_frames = []
-resolution_frames = []
-
-for i, frame in enumerate(conflict_free_sequences):
-    actions_in_frame = {}
-    for agv, (from_node, to_node, action) in frame.items():
-        actions_in_frame[agv] = action
-
-    # Detect deadlock: all AGVs waiting in same frame
-    waiting_agvs = [agv for agv, act in actions_in_frame.items() if act == 'wait']
-    backtracking_agvs = [agv for agv, act in actions_in_frame.items() if act == 'backtracked']
-
-    if len(waiting_agvs) >= 2:
-        print(f"Frame {i}: {len(waiting_agvs)} AGVs waiting -> {actions_in_frame}")
-    if backtracking_agvs:
-        print(f"Frame {i}: BACKTRACKING -> {actions_in_frame}")
-
-    # Circular deadlock = all 3 AGVs are either waiting or backtracking
-    stuck_agvs = [agv for agv, act in actions_in_frame.items() if act in ('wait', 'backtracked')]
-    if len(stuck_agvs) >= 3:
-        deadlock_frames.append(i)
-
-    # Backtracking frame
-    if backtracking_agvs:
-        backtrack_frames.append(i)
-
-    # Resolution: a previously backtracking AGV now moves
-    if i > 0:
-        prev_frame = conflict_free_sequences[i - 1]
-        for agv, (from_node, to_node, action) in frame.items():
-            if agv in prev_frame:
-                _, _, prev_action = prev_frame[agv]
-                if prev_action in ('backtracked', 'wait') and action == 'move':
-                    # Check if this AGV was involved in backtracking at any point
-                    was_backtracked = any(
-                        agv in conflict_free_sequences[j] and conflict_free_sequences[j][agv][2] == 'backtracked'
-                        for j in range(0, i)
-                    )
-                    if was_backtracked:
-                        resolution_frames.append(i)
-
-# Remove duplicates
-deadlock_frames = sorted(set(deadlock_frames))
-backtrack_frames = sorted(set(backtrack_frames))
-resolution_frames = sorted(set(resolution_frames))
-
-print(f"\nDeadlock frames: {deadlock_frames}")
-print(f"Backtrack frames: {backtrack_frames}")
-print(f"Resolution frames: {resolution_frames}")
-
-# ---- If no events detected, also check for frame cuts (sequence gets shorter) ----
-# Frame cutting means the simulation rewound, so check for position jumps
-if not deadlock_frames and not backtrack_frames:
-    print("\nNo deadlock/backtrack actions found in frames.")
-    print("Your simulation may resolve deadlocks via frame cutting before they appear in final output.")
-    print("Checking for position discontinuities (jumps) as evidence of resolution...")
-
-    for agv, positions in position_history.items():
-        for i in range(1, len(positions)):
-            # A position jump backward could indicate resolution
-            if i > 1 and positions[i] == positions[i - 2] and positions[i] != positions[i - 1]:
-                print(f"  {agv} position jump at frame {i}: {positions[i - 1]} -> {positions[i]}")
-
-# ---- Draw events ----
-# Deadlock zones
-for frame_idx in deadlock_frames:
-    ax2.axvspan(frame_idx - 0.5, frame_idx + 0.5, alpha=0.25, color='red')
-
-# Backtracking zones - merge consecutive frames into ranges
-if backtrack_frames:
-    bt_start = backtrack_frames[0]
-    for i in range(1, len(backtrack_frames)):
-        if backtrack_frames[i] != backtrack_frames[i - 1] + 1:
-            ax2.axvspan(bt_start - 0.5, backtrack_frames[i - 1] + 0.5, alpha=0.2, color='orange')
-            bt_start = backtrack_frames[i]
-    ax2.axvspan(bt_start - 0.5, backtrack_frames[-1] + 0.5, alpha=0.2, color='orange')
-
-# Resolution points
-for frame_idx in resolution_frames:
-    ax2.axvline(x=frame_idx, color='green', linestyle='--', linewidth=2, alpha=0.8)
-
-# ---- Annotations ----
-if deadlock_frames:
-    y_max = max(max(p) for p in position_history.values())
-    ax2.annotate('Circular\nDeadlock', xy=(deadlock_frames[0], y_max),
-                 fontsize=9, fontweight='bold', color='darkred', ha='center',
-                 arrowprops=dict(arrowstyle='->', color='darkred'),
-                 xytext=(deadlock_frames[0] + 3, y_max + 1.5))
-
-if resolution_frames:
-    y_min = min(min(p) for p in position_history.values())
-    ax2.annotate('Resolution', xy=(resolution_frames[0], y_min),
-                 fontsize=9, fontweight='bold', color='darkgreen', ha='center',
-                 arrowprops=dict(arrowstyle='->', color='darkgreen'),
-                 xytext=(resolution_frames[0] + 3, y_min - 1.5))
-
-# ---- Custom legend ----
-from matplotlib.patches import Patch
-from matplotlib.lines import Line2D
-
-legend_elements = [
-    Line2D([0], [0], color='red', linewidth=1.5, label='AGV1'),
-    Line2D([0], [0], color='green', linewidth=1.5, label='AGV2'),
-    Line2D([0], [0], color='blue', linewidth=1.5, label='AGV3'),
-    Patch(facecolor='red', alpha=0.25, label='Circular Deadlock'),
-    Patch(facecolor='orange', alpha=0.2, label='Backtracking'),
-    Line2D([0], [0], color='green', linestyle='--', linewidth=2, label='Resolution'),
-]
-
-ax2.legend(handles=legend_elements, fontsize=9, loc='upper right')
-ax2.set_xlabel("Frame (Time Step)", fontsize=11)
-ax2.set_ylabel("Node Position", fontsize=11)
-ax2.set_title("AGV Position Over Time — Circular Deadlock Detection & Resolution", fontsize=13, fontweight='bold')
-ax2.grid(True, alpha=0.3)
-plt.tight_layout()
-plt.savefig("agv_circular_deadlock_timeline.png", dpi=150)
+plt.savefig("agv_full_timeline_no_cut.png", dpi=150)
 plt.show()
